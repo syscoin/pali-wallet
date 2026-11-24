@@ -51,6 +51,8 @@ Der Backup-Status hilft Ihnen bei der Wahl zwischen Komfort und Sicherheit. Er e
 
 ## Smart Accounts wiederherstellen
 
+Wenn Sie die Gesamtzahl der Signaturen eines wiederhergestellten SLH-DSA-Schlüssels nicht überprüfen können, [wechseln Sie zu einem neuen Schlüssel](./post-quantum-signer), bevor Sie wieder reguläre Signaturen mit SLH-DSA erstellen.
+
 Die Wiederherstellung von Pali Smart Accounts hängt von den installierten Modulen ab. Ein von einem Passkey kontrolliertes Konto benötigt die zugehörigen WebAuthn-Zugangsdaten, um künftige Aktionen freizugeben. Ein Guardian-Recovery-Modul kann den aktiven Validator nach der konfigurierten Zeitsperre ersetzen, wenn die erforderliche Anzahl von Guardians die Wiederherstellungsabsicht signiert. Der Wiederherstellungsablauf kann:
 
 1. Deterministische Pali-Kontodatensätze aus Wallet-Metadaten rekonstruieren.

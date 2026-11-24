@@ -13,6 +13,7 @@ import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 import type { IWalletNavigationScope } from 'utils/navigationState';
 import type { UtxoAcknowledgedInputs } from 'utils/utxoAcknowledgedInputs';
 
+import type { UtxoActivityReplacement } from '../../shared/utxoActivityStatus';
 import type {
   AccountRecords,
   AccountRecordSelection,
@@ -91,6 +92,10 @@ export interface IGlobalState {
     requestId: number;
     scope: IWalletNavigationScope;
     state: 'pending' | 'ready' | 'error';
+  };
+  utxoActivityReplacements?: {
+    scope: IWalletNavigationScope;
+    winners: Record<string, UtxoActivityReplacement>;
   };
 }
 

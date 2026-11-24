@@ -78,6 +78,7 @@ import {
   paliEntryPointInterface,
   paliSmartAccountInterface,
 } from 'utils/smartAccount/contracts';
+import { ExecutionSimulationEvidenceError } from 'utils/smartAccount/executionSimulationError';
 import {
   createSmartAccountGasTankFunding,
   ensureSmartAccountDeploymentPrefund,
@@ -332,8 +333,7 @@ function fixture(chainId = 57) {
 
 afterEach(() => jest.restoreAllMocks());
 
-async function cancellationFixture(useSpeedUpTip = false) {
-  const f = fixture();
+function attachSignedRecords(f: ReturnType<typeof fixture>) {
   const cryptoKeyring: any = Object.create(SoftwareKeyring.prototype);
   cryptoKeyring.sessionPassword = { isCleared: () => false };
   cryptoKeyring.sessionMnemonic = { isCleared: () => false };
@@ -362,6 +362,12 @@ async function cancellationFixture(useSpeedUpTip = false) {
     MainController.prototype as any
   ).inspectOrdinaryEvmNonce.bind(f.wallet);
   const session = { keyring, assertCurrent: () => undefined };
+  return { records, session };
+}
+
+async function cancellationFixture(useSpeedUpTip = false) {
+  const f = fixture();
+  const { records, session } = attachSignedRecords(f);
   const validator = deployment.account.smartAccount.auth!.validator;
   const nonce = (
     BigInt(encodeSmartAccountValidatorNonceKey(validator)) << BigInt(64)
@@ -1127,6 +1133,62 @@ it('keeps the final pre-broadcast check after durable persistence', async () => 
   expect(f.records.append).toHaveBeenCalledTimes(1);
   expect(f.broadcast).not.toHaveBeenCalled();
 });
+
+it.each([true, false])(
+  'retains the inner authorization after a failed Smart payer submission (simulation refused: %s)',
+  async (simulationRefused) => {
+    const f = fixture();
+    const { records, session } = attachSignedRecords(f);
+    const operation = buildSmartAccountUserOperation({
+      sender: smart,
+      nonce: '0',
+      callData: '0x1234',
+      signature: '0x1234',
+    });
+    const { operationHash } = await records.retainSmartAccountAuthorization(
+      session,
+      {
+        chainId: 57,
+        observedAt: { number: '16', hash: block.hash },
+        payer: signer.address,
+        userOperation: operation,
+      }
+    );
+    let persistedHash: string | undefined;
+    f.options.assertPendingState.mockImplementation(async (_provider, hash) => {
+      if (typeof hash !== 'string') return;
+      persistedHash = hash;
+      if (simulationRefused) throw new ExecutionSimulationEvidenceError();
+    });
+    if (!simulationRefused) {
+      f.broadcast.mockRejectedValueOnce(new Error('HTTP 502'));
+    }
+    await expect(
+      f.submit(NATIVE_EVM_FEE_FUNDING, {
+        ...f.request,
+        to: getPaliEntryPointAddress(57),
+        data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+          [operation],
+          signer.address,
+        ]),
+      })
+    ).rejects.toMatchObject({ transactionNotBroadcast: simulationRefused });
+    expect(persistedHash).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(f.broadcast).toHaveBeenCalledTimes(simulationRefused ? 0 : 1);
+    const outer = await records.listSender(session, '57', signer.address);
+    expect(outer.map(({ hash }) => hash)).toEqual(
+      simulationRefused ? [] : [persistedHash]
+    );
+    expect(
+      await records.readSmartAccountAuthorizationExact(
+        session,
+        '57',
+        smart,
+        operationHash
+      )
+    ).toMatchObject({ operationHash });
+  }
+);
 
 it.each(['review', 'signing', 'persistence'] as const)(
   'rechecks Smart asset spendability after %s without resubmitting',

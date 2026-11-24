@@ -4,6 +4,7 @@ import React from 'react';
 
 import { EVM_ACTIVITY_CURSOR_STALE } from '../../../../../../shared/evmHistory';
 import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
+import { getTransactionTypeLabel } from '../../../../../../utils/commonMethodSignatures';
 import { projectEvmActivityRow } from '../../../../../../wallet/evmActivityRow';
 
 import { useEvmActivityHistory } from './useEvmActivityHistory';
@@ -87,6 +88,9 @@ test('saved smart-account history uses authenticated inner transfer facts and ke
   expect(result.gasPrice).toBe(outer.feePerGas);
   expect(result.hash).toBe(outer.hash);
   expect(result.input).toBe('0x');
+  expect(result.dataBytes).toBe(0);
+  expect(result.methodSelector).toBeUndefined();
+  expect(getTransactionTypeLabel(result, true)).toBe('Sent');
   expect(result.blockNumber).toBeUndefined();
   expect(result.txreceipt_status).toBeUndefined();
 });

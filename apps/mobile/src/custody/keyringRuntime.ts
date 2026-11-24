@@ -1358,6 +1358,12 @@ export function createKeyringRuntimeFactory(
             ),
             metadata, replacement, retainUnsignedNative: retention?.retainUnsignedNative,
             onUnsentDappDiscarded: retention?.onUnsentDappDiscarded,
+            // Signed simulation can disclose the UserOperation, so only the
+            // separate, undispatched payer envelope can be retracted.
+            smartPayerCleanupSession: selected.type === 'SmartAccount' && assertSmartAdmission &&
+              metadata?.smartAccountExecution === true
+              ? { keyring: transactionRecordKeyring(keyring, checkWalletOwner), assertCurrent: checkWalletOwner }
+              : undefined,
             walletSendCleanupSession: (retention?.walletSend || retention?.onUnsentDappDiscarded) && selected.type !== 'SmartAccount'
               ? { keyring: transactionRecordKeyring(keyring, checkWalletOwner), assertCurrent: checkWalletOwner }
               : undefined,

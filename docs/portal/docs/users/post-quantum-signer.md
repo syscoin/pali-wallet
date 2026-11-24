@@ -64,6 +64,10 @@ Pali's current SLH-DSA profile requires a lifetime limit of `2^24` signatures pe
 
 This limit is part of the draft profile's security assumptions. Regenerating a signer preserves usage history still available locally. Restoring only a seed phrase or an older browser backup does not recover missing usage history, and separate devices do not share a counter. Those cases remain an unresolved limit of the current implementation.
 
+If you cannot account for all signatures made with the key, stop using it for normal signing on every device. Set up a fresh SLH-DSA key in a new Pali smart account with a previously unused account index before resuming normal signing. Regenerating a signer with the same seed phrase and account index produces the original key.
+
+After a restore, Pali can offer an account index you used before. If you cannot verify that an index is unused for this recovery phrase, create a separate wallet with a newly generated recovery phrase and set up its SLH-DSA signer there. Use another browser profile or device to keep the original wallet and its recovery access available while you transfer assets and update permissions tied to the old account.
+
 ## Why Pali is adding this
 
 ECDSA and P-256 passkeys are based on elliptic-curve discrete logarithms. A sufficiently capable quantum computer running Shor's algorithm would threaten those signature schemes. SLH-DSA uses hash-based signatures and gives Pali a path to quantum-resistant account authorization without changing the smart-account address. Pali's current limited-signature profile remains experimental; it is not one of the general-purpose parameter sets standardized in FIPS 205.

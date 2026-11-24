@@ -323,6 +323,13 @@ export function NativeSmartAccountOperationContent({
     );
   };
   const payer = state.payerReview;
+  const payerBudget = phase === 'authorize' ? state.payerBudget : undefined;
+  const feeFact = (label: string, units: string) => (
+    <View style={s.feeFact}>
+      <Text style={s.label}>{t(label)}</Text>
+      {amount(units)}
+    </View>
+  );
   const assetSummary = (display: AssetTransferDisplay, nativeUnits: string) => <>
     <View style={s.transferHeading}>
       <View style={s.transferIcon}><Coin id="token" asset={{ kind: 'evm', chainId: state.network.chainId, contractAddress: display.contract, decimals: display.decimals }} registrationHash={state.network.registrationHash} size={42} fallbackSymbol={display.items[0]?.symbol ?? undefined} /></View>
@@ -367,7 +374,7 @@ export function NativeSmartAccountOperationContent({
   const primary = state.phase === 'authorize' ? (
             <Button
               title={
-                state.payerBudget
+                payerBudget
                   ? t(batch ? 'mobile.recoveryStatusViews.operation.confirmCalls'
                     : transfer?.kind === 'dapp-call' ? 'mobile.recoveryStatusViews.operation.confirmTransaction'
                     : 'mobile.recoveryStatusViews.operation.confirmTransfer')
@@ -650,7 +657,7 @@ export function NativeSmartAccountOperationContent({
         )}
         {state.phase === 'authorize' && (
           <>
-            <Notice
+            {!payerBudget && <Notice
               title={
                 cancellation
                   ? t('transactions.smartAuthorizations.cancelInstruction')
@@ -671,9 +678,7 @@ export function NativeSmartAccountOperationContent({
                   : t('mobile.recoveryStatusViews.operation.createThisAccountOnTheNetwork')
               }
               body={
-                state.payerBudget
-                  ? t('send.smartAccountFeeDetails')
-                  : cancellation
+                cancellation
                   ? t('transactions.smartAccountCancelDescription')
                   : modules
                   ? t('mobile.smartAccountModules.authorizationHint')
@@ -695,25 +700,28 @@ export function NativeSmartAccountOperationContent({
                     : t('mobile.recoveryStatusViews.operation.authorizeThisSmartAccountTransferTheFollowingReviewConfirmsThe')
                   : t('mobile.recoveryStatusViews.operation.authorizeTheAccountsDeploymentThisOperationSendsNoAssetsThe')
               }
-            />
-            <Card style={s.card}>
-              <Text style={s.label}>{t(state.payerBudget ? 'send.smartAccountMaxFee' : 'mobile.recoveryStatusViews.operation.maximumAccountCharge')}</Text>
-              {amount(state.maximumPrefundUnits!)}
+            />}
+            <Card style={[s.card, payerBudget && s.feeCard]}>
+              {payerBudget ? <>
+                {feeFact('send.smartAccountMaxFee', state.maximumPrefundUnits!)}
+                {feeFact(payerBudget.gasTank
+                  ? 'mobile.recoveryStatusViews.operation.maximumNetworkFeeGasTank'
+                  : 'transactions.replay.maximumFee', payerBudget.maximumFeeWei)}
+                <View style={s.feeFact}>
+                  <Text style={s.label}>{t('transactions.feePayer')}</Text>
+                  <Text selectable style={s.address}>{payerBudget.address}</Text>
+                </View>
+                {payerBudget.maximumPrefundWei !== '0' && <>
+                  {feeFact('mobile.recoveryStatusViews.operation.fundTheAccountCharge', payerBudget.maximumPrefundWei)}
+                  {feeFact('transactions.replay.maximumFee', payerBudget.maximumPrefundFeeWei)}
+                </>}
+                <Text style={s.label}>{t('send.smartAccountFeeDetails')}</Text>
+              </> : <>
+                <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.maximumAccountCharge')}</Text>
+                {amount(state.maximumPrefundUnits!)}
+              </>}
               <Text style={s.label}>
                 {t('mobile.recoveryStatusViews.operation.unusedPrefundStaysWithYourAccount')}</Text>
-              {state.payerBudget && <>
-                <Text style={s.label}>{t('transactions.feePayer')}</Text>
-                <Text selectable style={s.address}>{state.payerBudget.address}</Text>
-                <Text style={s.label}>{t(state.payerBudget.gasTank
-                  ? 'mobile.recoveryStatusViews.operation.maximumNetworkFeeGasTank' : 'transactions.replay.maximumFee')}</Text>
-                {amount(state.payerBudget.maximumFeeWei)}
-                {state.payerBudget.maximumPrefundWei !== '0' && <>
-                  <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.fundTheAccountCharge')}</Text>
-                  {amount(state.payerBudget.maximumPrefundWei)}
-                  <Text style={s.label}>{t('transactions.replay.maximumFee')}</Text>
-                  {amount(state.payerBudget.maximumPrefundFeeWei)}
-                </>}
-              </>}
               <Button
                 title={
                   details
@@ -992,6 +1000,8 @@ const s = StyleSheet.create({
   contextHeading: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: 12, rowGap: 2 },
   safe: { flex: 1, backgroundColor: colors.bg },
   card: { padding: 16, gap: 10 },
+  feeCard: { paddingVertical: 12, gap: 8 },
+  feeFact: { gap: 3 },
   transferHeading: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   transferTitle: { flex: 1, gap: 3 },
   transferIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.raised },

@@ -26,6 +26,11 @@ export const projectEvmActivityRow = (
   const batch = (smart?.executions?.length ?? 0) > 1;
   const single =
     smart?.executions?.length === 1 ? smart.executions[0] : undefined;
+  const selector = single
+    ? single.data.length >= 10
+      ? single.data.slice(0, 10)
+      : undefined
+    : tx.selector;
   return {
     hash: tx.hash,
     historySource: EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned,
@@ -55,8 +60,8 @@ export const projectEvmActivityRow = (
     timestamp: Math.floor(tx.createdAt / 1000),
     gas: tx.gasLimit,
     gasPrice: tx.feePerGas,
-    dataBytes: tx.dataBytes,
-    ...(tx.selector ? { methodSelector: tx.selector } : {}),
+    dataBytes: single ? (single.data.length - 2) / 2 : tx.dataBytes,
+    ...(selector ? { methodSelector: selector } : {}),
     ...(tx.speedUpAvailable ? { speedUpAvailable: true } : {}),
     ...(tx.cancellationUnavailable ? { cancellationUnavailable: true } : {}),
     isCancel: tx.operation === 'cancel' || smart?.cancellation === true,

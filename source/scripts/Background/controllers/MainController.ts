@@ -305,6 +305,7 @@ import {
   setPostNetworkSwitchLoading,
   setEnsName,
   setTransactionHistoryStatus,
+  setUtxoActivityReplacements,
 } from 'state/vaultGlobal';
 import {
   INetworkType,
@@ -1465,41 +1466,43 @@ class MainController {
     return records;
   }
 
-  private async reconcileRetainedUtxoTransfers(): Promise<void> {
+  private async reconcileRetainedUtxoTransfers(txid?: string): Promise<void> {
     // Public history polling also runs while locked. It must never open the
     // encrypted journal or acquire a private-record session in that state.
     if (!this.isUnlocked()) return;
     const signing = this.captureUtxoSigningContext();
-    const assertCurrent = signing.assertWalletReviewCurrent;
+    const scope = getWalletNavigationScope();
+    const assertCurrent = () => {
+      signing.assertWalletReviewCurrent();
+      if (getWalletNavigationScope() !== scope)
+        throw new Error('Saved UTXO status changed');
+    };
     assertCurrent();
-    const { vault, vaultGlobal } = store.getState();
-    const network = vault.activeNetwork;
-    const owner = this.utxoRecordOwner(network, signing.context.account);
-    const backendChain = resolvePinnedUtxoBackendChain(
-      network,
-      vaultGlobal.networks?.syscoin?.[network.chainId]
-    );
-    if (!backendChain)
-      throw new Error('Verify this UTXO network before checking transfers');
-    await this.withUtxoReadOwner(assertCurrent, (signal) =>
-      reconcileRetainedUtxo({
-        records: this.getRetainedUtxoRecords(),
-        session: { keyring: signing.keyring, assertCurrent },
-        owner,
-        backendChain,
+    await this.withUtxoReadOwner(assertCurrent, async (signal) => {
+      const request: Omit<Parameters<typeof observeRetainedUtxo>[0], 'txid'> = {
+        ...this.retainedUtxoRead(signing, assertCurrent),
         signal,
-        async fetch(input, init) {
-          if (typeof input !== 'string' || init?.method !== 'GET')
-            throw new Error('Invalid saved UTXO status request');
-          return withWalletBackend(input, () => {
-            assertCurrent();
-            if (init.signal?.aborted)
-              throw new Error('Saved UTXO status changed');
-            return globalThis.fetch(input, init);
-          });
+        onReplacementObservation(winner, replacement) {
+          assertCurrent();
+          const previous =
+            store.getState().vaultGlobal.utxoActivityReplacements;
+          const winners =
+            previous?.scope.account === scope.account &&
+            previous.scope.network === scope.network
+              ? previous.winners
+              : {};
+          if (isEqual(winners[winner], replacement)) return;
+          const updated = { ...winners };
+          if (replacement) updated[winner] = replacement;
+          else delete updated[winner];
+          store.dispatch(
+            setUtxoActivityReplacements({ scope, winners: updated })
+          );
         },
-      })
-    );
+      };
+      if (txid) await observeRetainedUtxo({ ...request, txid });
+      else await reconcileRetainedUtxo(request);
+    });
   }
 
   public checkRetainedUtxoTransfer(txid: string) {
@@ -1512,8 +1515,25 @@ class MainController {
   private observeCapturedRetainedUtxo(
     signing: ReturnType<MainController['captureUtxoSigningContext']>,
     txid: string,
-    signal?: AbortSignal
+    approvalSignal?: AbortSignal
   ) {
+    const assertCurrent = signing.assertWalletReviewCurrent;
+    return this.withUtxoReadOwner(
+      assertCurrent,
+      (signal) =>
+        observeRetainedUtxo({
+          ...this.retainedUtxoRead(signing, assertCurrent),
+          txid,
+          signal,
+        }),
+      approvalSignal
+    );
+  }
+
+  private retainedUtxoRead(
+    signing: ReturnType<MainController['captureUtxoSigningContext']>,
+    assertCurrent: () => void
+  ): Omit<Parameters<typeof observeRetainedUtxo>[0], 'txid' | 'signal'> {
     const { vault, vaultGlobal } = store.getState();
     const network = vault.activeNetwork;
     const owner = this.utxoRecordOwner(network, signing.context.account);
@@ -1523,30 +1543,22 @@ class MainController {
     );
     if (!backendChain)
       throw new Error('Verify this UTXO network before checking a transfer');
-    const assertCurrent = signing.assertWalletReviewCurrent;
-    return this.withUtxoReadOwner(
-      assertCurrent,
-      (signal) =>
-        observeRetainedUtxo({
-          records: this.getRetainedUtxoRecords(),
-          session: { keyring: signing.keyring, assertCurrent },
-          owner,
-          txid,
-          backendChain,
-          signal,
-          async fetch(input, init) {
-            if (typeof input !== 'string' || init?.method !== 'GET')
-              throw new Error('Invalid saved UTXO status request');
-            return withWalletBackend(input, () => {
-              assertCurrent();
-              if (init.signal?.aborted)
-                throw new Error('Saved UTXO status changed');
-              return globalThis.fetch(input, init);
-            });
-          },
-        }),
-      signal
-    );
+    return {
+      records: this.getRetainedUtxoRecords(),
+      session: { keyring: signing.keyring, assertCurrent },
+      owner,
+      backendChain,
+      async fetch(input, init) {
+        if (typeof input !== 'string' || init?.method !== 'GET')
+          throw new Error('Invalid saved UTXO status request');
+        return withWalletBackend(input, () => {
+          assertCurrent();
+          if (init.signal?.aborted)
+            throw new Error('Saved UTXO status changed');
+          return globalThis.fetch(input, init);
+        });
+      },
+    };
   }
 
   private utxoReplacementReview?: {
@@ -2472,6 +2484,9 @@ class MainController {
         ...(replacement ? { replacement } : {}),
         automaticNonceEndpoint: context.network.url,
         retainAssetPreflightFailure: assetOperation,
+        smartPayerCleanupSession: feePreflight?.smartPayer
+          ? session
+          : undefined,
         walletSendCleanupSession:
           selected.type !== KeyringAccountType.SmartAccount &&
           (!feePreflight || feePreflight.walletSend) &&
@@ -4110,6 +4125,8 @@ class MainController {
     this.smartOwnerInvalidators?.forEach((retire) => retire());
     this.postSwitchHistorySave = undefined;
     this.activeUtxoReads?.forEach((operation) => operation.abort());
+    if (store.getState().vaultGlobal?.utxoActivityReplacements)
+      store.dispatch(setUtxoActivityReplacements(undefined));
     this.utxoFeeCache = undefined;
     this.retainedEvmRecords = undefined;
     utxoRecordsByWallet.delete(this);
@@ -14748,6 +14765,14 @@ class MainController {
 
           // Check if transaction is already confirmed
           if (tx && isTransactionInBlock(tx)) {
+            if (
+              isBitcoinBased &&
+              accountInfo.id === latestActiveAccount.id &&
+              accountInfo.type === latestActiveAccount.type
+            )
+              void this.reconcileRetainedUtxoTransfers(txHash).catch(
+                () => undefined
+              );
             const blockInfo = getTransactionBlockInfo(tx);
             console.log(
               `[RapidPoll] Transaction ${txHash} confirmed! In block: ${blockInfo}. Stopping rapid poll.`

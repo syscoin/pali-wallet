@@ -51,6 +51,8 @@ El estado de respaldo es una señal para ayudarte a elegir entre conveniencia y 
 
 ## Recuperar cuentas inteligentes
 
+Si no puedes verificar el número total de firmas hechas con una clave SLH-DSA restaurada, [cambia a una clave nueva](./post-quantum-signer) antes de volver a firmar operaciones normales con SLH-DSA.
+
 La recuperación de cuentas inteligentes de Pali depende de los módulos instalados. Una cuenta controlada por passkey necesita la credencial WebAuthn correspondiente para aprobar acciones futuras. Un módulo de recuperación mediante guardianes puede reemplazar el validador activo tras el bloqueo temporal configurado si el umbral requerido de guardianes firma la intención de recuperación. El flujo de recuperación puede:
 
 1. Reconstruir registros deterministas de cuentas Pali a partir de los metadatos de la billetera.

@@ -42,6 +42,10 @@ Si Pali indique que le signataire local manque ou ne correspond pas au validateu
 
 La limite de `2^24` signatures vaut pour toute la durée de vie de la clé, tous usages et toutes copies confondus. Pali réserve `1,000` signatures à la rotation ; la signature normale s’arrête à `2^24 - 1,000` signatures enregistrées localement. La régénération conserve l’historique local disponible, mais une restauration à partir de la seule phrase de récupération ou d’une ancienne sauvegarde ne retrouve pas l’historique manquant, et les appareils ne synchronisent pas leurs compteurs. La limite globale n’est donc pas garantie dans ces cas.
 
+Si vous ignorez le nombre total de signatures effectuées avec cette clé, cessez de l’utiliser pour les signatures courantes sur tous vos appareils. Avant de reprendre la signature, configurez une nouvelle clé SLH-DSA dans un nouveau compte intelligent Pali avec un indice de compte encore jamais utilisé. Régénérer le signataire avec la même phrase de récupération et le même indice de compte reproduit la clé d’origine.
+
+Après une restauration, Pali peut proposer un indice de compte que vous avez déjà utilisé. Si vous ne pouvez pas vérifier qu’un indice n’a jamais servi avec cette phrase de récupération, créez un portefeuille distinct avec une nouvelle phrase de récupération et configurez-y le signataire SLH-DSA. Utilisez un autre profil de navigateur ou un autre appareil pour conserver l’accès au portefeuille d’origine et à ses options de récupération pendant le transfert de vos actifs et la mise à jour des autorisations liées à l’ancien compte.
+
 Si le budget normal est épuisé, Pali cesse de signer les opérations normales avec cette clé et conserve la réserve pour les tentatives de rotation du validateur. Pali ne signe pas silencieusement avec un signataire épuisé.
 
 ## Références

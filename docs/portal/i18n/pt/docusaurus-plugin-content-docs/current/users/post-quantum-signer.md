@@ -42,6 +42,10 @@ Se a Pali disser que o assinador local está ausente ou não corresponde ao vali
 
 O limite de `2^24` assinaturas vale por toda a vida da chave, somando todos os usos e cópias. A Pali reserva `1,000` assinaturas para rotação; a assinatura normal para em `2^24 - 1,000` assinaturas registradas localmente. A regeneração preserva o histórico disponível localmente, mas uma restauração apenas da frase-semente ou de um backup antigo não recupera o histórico ausente, e dispositivos não sincronizam contadores. Portanto, o limite global não fica garantido nesses casos.
 
+Se você não souber o número total de assinaturas feitas com essa chave, deixe de usá-la para assinar operações normais em todos os dispositivos. Antes de voltar a assinar, configure uma nova chave SLH-DSA em uma nova conta inteligente da Pali com um índice de conta nunca usado. Regenerar o assinador com a mesma frase-semente e o mesmo índice de conta produz a chave original.
+
+Após uma restauração, a Pali pode sugerir um índice de conta que você já usou. Se não conseguir confirmar que um índice nunca foi usado com essa frase de recuperação, crie uma carteira separada com uma nova frase de recuperação gerada para ela e configure o assinador SLH-DSA nessa carteira. Use outro perfil de navegador ou outro dispositivo para manter o acesso à carteira original e aos seus meios de recuperação enquanto transfere os ativos e atualiza as permissões vinculadas à conta anterior.
+
 Se o orçamento normal acabar, a Pali para de assinar operações normais com essa chave e preserva a reserva para tentativas de rotação do validador. Ela não assina silenciosamente com um assinador esgotado.
 
 ## Referências

@@ -5,7 +5,10 @@ import {
   reconcileRetainedUtxo,
 } from '../../../wallet/utxoSubmission';
 import vaultReducer from 'state/vault';
-import vaultGlobalReducer from 'state/vaultGlobal';
+import vaultGlobalReducer, {
+  selectIsUtxoActivityReplaced,
+} from 'state/vaultGlobal';
+import { getWalletNavigationScope } from 'utils/navigationState';
 
 import MainController from './MainController';
 import { CancellablePromises } from './promises/cancellablesPromises';
@@ -194,6 +197,48 @@ it('checks the selected transfer without reconciling the full journal', async ()
   expect(mockObserve).toHaveBeenCalledTimes(1);
   expect(mockReconcile).not.toHaveBeenCalled();
   expect(globalThis.fetch).not.toHaveBeenCalled();
+});
+
+it('publishes and revokes a scoped Activity replacement without removing the original', async () => {
+  const original = 'd'.repeat(64);
+  const winner = 'e'.repeat(64);
+  const blockHash = 'f'.repeat(64);
+  const scope = getWalletNavigationScope();
+  const replaced = (account = scope.account) =>
+    selectIsUtxoActivityReplaced(
+      mockStore.getState(),
+      { ...scope, account },
+      original
+    );
+  const history =
+    wallet.transactionsManager.utils.updateTransactionsFromCurrentAccount;
+  history.mockResolvedValueOnce([{ txid: original, confirmations: 0 }]);
+  await refresh(true);
+  expect(replaced()).toBe(false);
+  history.mockResolvedValueOnce([
+    { txid: winner, confirmations: 1, blockHash },
+  ]);
+  mockReconcile.mockImplementationOnce(async ({ onReplacementObservation }) =>
+    onReplacementObservation?.(winner, { blockHash, replacedTxids: [original] })
+  );
+  await refresh();
+  await flush();
+  expect(replaced()).toBe(true);
+  expect(replaced('different-wallet-scope')).toBe(false);
+  expect(
+    mockStore.getState().vault.accountTransactions.HDAccount[0].syscoin[57]
+  ).toContainEqual({ txid: original, confirmations: 0 });
+  history.mockResolvedValueOnce([{ txid: winner, confirmations: 0 }]);
+  await refresh(true);
+  expect(replaced()).toBe(false);
+  mockReconcile.mockImplementationOnce(async ({ onReplacementObservation }) =>
+    onReplacementObservation?.(winner, undefined)
+  );
+  await refresh();
+  await flush();
+  expect(
+    mockStore.getState().vaultGlobal.utxoActivityReplacements.winners
+  ).toEqual({});
 });
 
 it.each(['rapid-polls', 'history-cancel', 'ordinary-poll'] as const)(

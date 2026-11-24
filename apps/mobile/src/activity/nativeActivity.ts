@@ -35,7 +35,7 @@ import {
   getEvmSettlementStatus,
   type EvmSettlementStatus,
 } from '../../../../source/utils/evmReplacement.ts';
-import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
+import { getObservedEvmTerminalPhase, type EvmObservationRequest, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { SmartAccountAuthorizationSummary } from '../../../../source/wallet/smartAccountAuthorization.ts';
 import type { SmartAccountAuthorizationObservation } from '../../../../source/utils/smartAccount/authorizationStatus.ts';
 import type { NativeTokenPortfolioScope } from '../portfolio/tokenRegistry.ts';
@@ -180,7 +180,11 @@ type RetainedObservationWork = {
   queue: LocalActivityRecord[];
   seen: Set<string>;
   workers: number;
+  retry?: ReturnType<typeof setTimeout>;
 };
+const RECENT_SUBMISSION_MS = 5 * 60_000;
+const PENDING_RECEIPT_INTERVAL_MS = 15_000;
+const OLDER_RECEIPT_INTERVAL_MS = 60_000;
 const initial = (): NativeActivitySnapshot =>
   Object.freeze({
     status: 'locked',
@@ -207,6 +211,7 @@ export class NativeActivity {
   private viewSaveFailed = false;
   private viewSaveAttempt = 0;
   private listeners = new Set<() => void>();
+  private connection: object | null = null;
   private scope: EvmActivityReadScope | null = null;
   private scopeRevision: number | null = null;
   private refreshingRows: ReadonlyMap<string, ActivityRow> | null = null;
@@ -276,8 +281,11 @@ export class NativeActivity {
     for (const listener of this.listeners) listener();
   }
   connect(): () => void {
+    const connection = {};
+    this.connection = connection;
     let revision = -1;
     const update = () => {
+      if (this.connection !== connection) return;
       const state = this.source.getSnapshot();
       if (state.revision === revision) return;
       revision = state.revision;
@@ -290,6 +298,8 @@ export class NativeActivity {
     update();
     return () => {
       unsubscribe();
+      if (this.connection !== connection) return;
+      this.connection = null;
       this.stop();
       this.publish(initial());
     };
@@ -308,7 +318,10 @@ export class NativeActivity {
     this.pendingRows = [];
     this.pendingCursor = undefined;
     this.pagedLocals.clear();
-    this.retainedWork?.lifetime.abort();
+    if (this.retainedWork) {
+      clearTimeout(this.retainedWork.retry);
+      this.retainedWork.lifetime.abort();
+    }
     this.retainedWork = undefined;
     this.hydration = [];
     this.checking.clear();
@@ -1064,9 +1077,32 @@ export class NativeActivity {
     for (const local of candidates) if (!work.seen.has(local.hash)) {
       work.seen.add(local.hash); work.queue.push(local);
     }
+    const pending = () => [...this.locals.values()].filter(local => {
+      if (this.pagedLocals.has(local.hash) ||
+          local.phase !== 'attempted' && local.phase !== 'submitted' ||
+          this.observations.get(local.hash)?.block) return false;
+      const observation = this.retainedObservations.get(local.hash);
+      return !observation || !getObservedEvmTerminalPhase(observation, local.nonce);
+    });
     const pump = () => {
       const count = Math.min(2 - work.workers, work.queue.length);
-      if (count <= 0 || work.lifetime.signal.aborted) return;
+      if (work.lifetime.signal.aborted) return;
+      if (count <= 0) {
+        if (work.workers || work.retry !== undefined || !this.connection) return;
+        const unsettled = pending();
+        if (!unsettled.length) return;
+        const recent = unsettled.some(local => Date.now() - local.createdAt < RECENT_SUBMISSION_MS);
+        // Recheck only open submissions. Preserve the history and its pagination
+        // while the existing scoped receipt reader checks for settlement.
+        work.retry = setTimeout(() => {
+          work.retry = undefined;
+          try { guard(); } catch { return; }
+          if (work.workers || work.queue.length) return;
+          work.queue.push(...pending().filter(local => !this.checking.has(local.hash)));
+          pump();
+        }, recent ? PENDING_RECEIPT_INTERVAL_MS : OLDER_RECEIPT_INTERVAL_MS);
+        return;
+      }
       const lifetime = work.lifetime.signal;
       const wave = count > 1
         ? this.receipts.retainedWave?.(scope.network, this.receiptScope(scope, generation), lifetime, guard)

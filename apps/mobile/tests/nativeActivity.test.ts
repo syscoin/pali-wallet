@@ -137,6 +137,47 @@ test('activity invalidation retires delayed observers before clearing the visibl
   } finally { disconnect(); }
 });
 
+test('open activity settles submitted transactions in place and stops reading after confirmation', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const local = { ...fixture().local(1, 'submitted'), createdAt: Date.now() };
+  let mined = false;
+  const f = fixture({ local, observeLocal: async () => mined
+    ? { status: 'mined', outcome: 'confirmed', block: { hash: hash(99), number: '99' } }
+    : { status: 'missing', latestNonce: String(local.nonce) } });
+  const flush = async () => { for (let turn = 0; turn < 80; turn++) await Promise.resolve(); };
+  const disconnect = f.controller.connect();
+  try {
+    await flush();
+    assert.equal(f.controller.getSnapshot().rows[0]?.retainedObservation?.status, 'missing');
+    const pages = f.explorer.pages.length;
+    const cacheWrites = f.cacheWrites.length;
+    mined = true;
+    t.mock.timers.tick(15_000);
+    await flush();
+    assert.equal(f.controller.getSnapshot().rows[0]?.retainedObservation?.status, 'mined');
+    t.mock.timers.tick(30_000);
+    await flush();
+    assert.equal(f.localReads.length, 2);
+    assert.equal(f.explorer.pages.length, pages);
+    assert.equal(f.cacheWrites.length, cacheWrites);
+  } finally { disconnect(); }
+});
+
+test('activity lock cancels the open submission receipt timer', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture({ local: fixture().local(1, 'attempted') });
+  const disconnect = f.controller.connect();
+  try {
+    for (let turn = 0; turn < 80; turn++) await Promise.resolve();
+    assert.equal(f.localReads.length, 1);
+    f.source.change({ phase: 'locked' });
+    t.mock.timers.tick(30_000);
+    for (let turn = 0; turn < 80; turn++) await Promise.resolve();
+    assert.equal(f.localReads.length, 1);
+    assert.equal(f.controller.getSnapshot().rows.length, 0);
+  } finally { disconnect(); }
+});
+
 test('same-scope refresh keeps the displayed token row until fresh pending history replaces it', async () => {
   const page = deferred<readonly DiscoveredActivityCandidate[]>();
   let refreshing = false, heldEntered = false;

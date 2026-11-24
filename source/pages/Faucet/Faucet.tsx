@@ -108,7 +108,7 @@ export const Faucet: React.FC = () => {
         </>
       )}
       {!isLoading && (
-        <PageActionFooter>
+        <PageActionFooter className="faucet-footer">
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"

@@ -191,8 +191,19 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
       }
     } catch (error) {
       if (alive) {
-        const code =
-          typeof error?.code === 'string' ? error.code : 'LEDGER_DEVICE_ERROR';
+        // The Ethereum signer kit returns the firmware's refusal status as
+        // errorCode. Classify it while the error still belongs to this device
+        // operation, before crossing the Port as a wallet error.
+        const declined =
+          (message.method === 'evm.signTransaction' ||
+            message.method === 'evm.signPersonalMessage' ||
+            message.method === 'evm.signTypedData') &&
+          error?.errorCode === '6985';
+        const code = declined
+          ? 'HARDWARE_REQUEST_CANCELLED'
+          : typeof error?.code === 'string'
+          ? error.code
+          : 'LEDGER_DEVICE_ERROR';
         port.postMessage({
           id: message.id,
           ok: false,

@@ -15,7 +15,7 @@ Les comptes intelligents Pali sont des comptes de contrat que Pali peut créer, 
 
 `PaliSmartAccount` exécute les appels et vérifie les signatures via des modules de type ERC-7579. `PaliSmartAccountFactory` calcule des adresses déterministes et déploie les comptes. Pali prépare les exécutions au format ERC-4337 et utilise ERC-1271 pour les signatures des comptes de contrat.
 
-Le compte est d’abord déployé avec un validateur ECDSA contrôlé par le portefeuille. Si la dapp demande une passkey ou un autre validateur pris en charge, Pali installe ce validateur et retire le validateur initial par une exécution du compte.
+La fabrique accepte ses modules ECDSA, P-256 WebAuthn et SLH-DSA comme validateurs initiaux. Le compte les installe dans l’ordre indiqué et active le dernier. Avec `wallet_prepareSmartAccount`, l’extension déploie le compte avec un validateur ECDSA contrôlé par le portefeuille afin de pouvoir autoriser le passage à l’authentificateur demandé par la dapp.
 
 ## Deux rôles : les validateurs signent, les gardiens récupèrent
 

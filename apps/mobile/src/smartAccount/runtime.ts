@@ -30,6 +30,7 @@ import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED, type SmartAccountPayerBudget } fro
 import type { SmartAccountPackedUserOperation } from '../../../../source/utils/smartAccount/account.ts';
 import { buildGuardianPolicyExecutions } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
+import { abortable } from '../../../../source/shared/boundedHttp.ts';
 import { assertSmartAccountTargetsAllowed } from '../../../../source/utils/smartAccount/targetPolicy.ts';
 import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
 import { canUseReservedSLHDSASignature } from '../../../../source/utils/smartAccount/slhDsaPurpose.ts';
@@ -247,6 +248,49 @@ export function createNativeSmartOperation(
     refreshMetadata: ports.refreshMetadata,
     async prepare(signal, assertCurrent) {
       policySignal = signal;
+      // The external target policy must finish before starting the on-chain read budget.
+      const checkAddress = (address: string) => abortable(ports.checkAddress(address), signal);
+      if (intent.kind === 'modules') {
+        await assertSmartAccountTargetsAllowed(getBlacklistTargetsForEvmCall({ to: account.address, data: '0x' }), checkAddress, assertCurrent);
+      } else if (intent.kind === 'dapp-batch') {
+        for (const call of createSmartAccountCallsExecutions(intent.calls))
+          await assertSmartAccountTargetsAllowed(
+            getBlacklistTargetsForEvmCall({ to: call.target, data: call.data }),
+            checkAddress,
+            assertCurrent
+          );
+      } else if (
+        intent.kind !== 'deploy' &&
+        intent.kind !== 'guardian-policy' &&
+        intent.kind !== 'cancel-operation' &&
+        intent.kind !== 'authenticator'
+      ) {
+        await assertSmartAccountTargetsAllowed(
+          getBlacklistTargetsForEvmCall(
+            intent.kind === 'nft-transfer'
+              ? {
+                  to: intent.contractAddress,
+                  data: buildSmartAccountNftTransfer(nftIntent!).data,
+                }
+              : intent.kind === 'erc20-transfer'
+              ? {
+                  to: intent.token.contractAddress,
+                  data: buildSmartAccountErc20Transfer(
+                    intent.token.contractAddress,
+                    intent.recipient,
+                    intent.amountUnits
+                  ).data,
+                }
+              : {
+                  to: intent.recipient,
+                  data: intent.kind === 'dapp-call' ? intent.data : '0x',
+                }
+          ),
+          checkAddress,
+          assertCurrent
+        );
+      }
+      assertCurrent();
       const rawProvider = createNativeSmartAccountProvider(
         ports.network,
         ports.rpc,
@@ -299,46 +343,6 @@ export function createNativeSmartOperation(
           }
         };
         await pending.verify();
-        if (intent.kind === 'modules') {
-          await assertSmartAccountTargetsAllowed(getBlacklistTargetsForEvmCall({ to: account.address, data: '0x' }), ports.checkAddress, assertCurrent);
-        } else if (intent.kind === 'dapp-batch') {
-          for (const call of createSmartAccountCallsExecutions(intent.calls))
-            await assertSmartAccountTargetsAllowed(
-              getBlacklistTargetsForEvmCall({ to: call.target, data: call.data }),
-              ports.checkAddress,
-              assertCurrent
-            );
-        } else if (
-          intent.kind !== 'deploy' &&
-          intent.kind !== 'guardian-policy' &&
-          intent.kind !== 'cancel-operation' &&
-          intent.kind !== 'authenticator'
-        ) {
-          await assertSmartAccountTargetsAllowed(
-            getBlacklistTargetsForEvmCall(
-              intent.kind === 'nft-transfer'
-                ? {
-                    to: intent.contractAddress,
-                    data: buildSmartAccountNftTransfer(nftIntent!).data,
-                  }
-                : intent.kind === 'erc20-transfer'
-                ? {
-                    to: intent.token.contractAddress,
-                    data: buildSmartAccountErc20Transfer(
-                      intent.token.contractAddress,
-                      intent.recipient,
-                      intent.amountUnits
-                    ).data,
-                  }
-                : {
-                    to: intent.recipient,
-                    data: intent.kind === 'dapp-call' ? intent.data : '0x',
-                  }
-            ),
-            ports.checkAddress,
-            assertCurrent
-          );
-        }
         const state = deploymentState ?? await readSmartAccountDeploymentState({
           account,
           chainId,

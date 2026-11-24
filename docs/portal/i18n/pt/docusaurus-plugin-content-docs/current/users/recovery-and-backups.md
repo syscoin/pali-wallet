@@ -51,6 +51,8 @@ O status de backup é um sinal para ajudar você a escolher entre conveniência 
 
 ## Recuperar contas inteligentes
 
+Se você não conseguir verificar o total de assinaturas feitas com uma chave SLH-DSA restaurada, [mude para uma nova chave](./post-quantum-signer) antes de voltar a assinar operações normais com SLH-DSA.
+
 A recuperação de contas inteligentes da Pali depende dos módulos instalados. Uma conta controlada por passkey precisa da credencial WebAuthn correspondente para aprovar ações futuras. Um módulo de recuperação por guardiões pode substituir o validador ativo após o bloqueio temporal configurado se o número exigido de guardiões assinar a intenção de recuperação. O fluxo de recuperação pode:
 
 1. Reconstruir registros determinísticos de contas Pali a partir dos metadados da carteira.

@@ -20,7 +20,7 @@ Les paramètres de compte de la factory comprennent :
 | Paramètre | Signification |
 | --- | --- |
 | `salt` | Sel de déploiement déterministe dérivé par Pali à partir de l’ancre du portefeuille, de l’index du compte, de la chaîne et de la version du compte. |
-| `initialValidator` | Module validateur utilisé pour le déploiement initial. Pali utilise un validateur ECDSA contrôlé par le portefeuille pour une configuration déterministe. |
+| `initialValidator` | Choisissez l’un des modules ECDSA, P-256 WebAuthn ou SLH-DSA configurés dans la fabrique. Si vous fournissez une liste de validateurs initiaux, tout ordre est admis et le dernier devient actif. Avec `wallet_prepareSmartAccount`, Pali commence par un validateur ECDSA contrôlé par le portefeuille. |
 | `initData` | Données encodées d’initialisation du validateur. |
 
 Après le déploiement, Pali peut installer le validateur demandé et retirer le validateur initial dans un seul lot d’actions du compte intelligent. Une dapp peut ainsi demander un compte contrôlé par passkey tandis que Pali conserve un premier parcours de déploiement déterministe.

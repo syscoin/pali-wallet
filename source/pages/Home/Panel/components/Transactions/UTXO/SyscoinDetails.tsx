@@ -39,6 +39,7 @@ import type {
 } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
+import { selectIsUtxoActivityReplaced } from 'state/vaultGlobal';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import { ellipsis } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
@@ -95,6 +96,9 @@ export const SyscoinTransactionDetails = ({
   const { currency, url: networkUrl } = activeNetwork;
   const normalizedHash = hash.toLowerCase();
   const walletScope = useSelector(getWalletNavigationScope, shallowEqual);
+  const replacementConfirmed = useSelector((state: RootState) =>
+    selectIsUtxoActivityReplaced(state, walletScope, normalizedHash)
+  );
   const scope = `${walletScope.account}:${walletScope.network}:${normalizedHash}`;
   const accountTransaction =
     tx?.txid?.toLowerCase() === normalizedHash ? tx : undefined;
@@ -287,10 +291,11 @@ export const SyscoinTransactionDetails = ({
 
   const isTxCanceled = rawTransaction?.isCanceled === true;
   const isConfirmed = isTransactionInBlock(rawTransaction);
+  const isReplaced = replacementConfirmed && !isConfirmed;
   const isTxSent = rawTransaction?.direction === 'sent';
   const etaSeconds = readHistoryCount(rawTransaction?.confirmationETASeconds);
   const confirmationETA =
-    !isConfirmed && etaSeconds !== null
+    !isConfirmed && !isReplaced && etaSeconds !== null
       ? formatSyscoinConfirmationETA({ confirmationETASeconds: etaSeconds })
       : null;
   const nativeIntent = getSyscoinNativeTransferAmount(
@@ -369,7 +374,10 @@ export const SyscoinTransactionDetails = ({
       },
       {
         label: 'Block Hash',
-        value: isConfirmed ? blockHash ?? unavailable : t('send.pending'),
+        value:
+          isConfirmed || isReplaced
+            ? blockHash ?? unavailable
+            : t('send.pending'),
         canCopy: blockHash !== null,
       },
       {
@@ -387,7 +395,9 @@ export const SyscoinTransactionDetails = ({
     formattedTransactionDetails.push(
       {
         label: 'Block Time',
-        value: !isConfirmed
+        value: isReplaced
+          ? unavailable
+          : !isConfirmed
           ? t('send.pending')
           : blockDate && Number.isFinite(blockDate.getTime())
           ? blockDate.toLocaleString(i18n?.resolvedLanguage || i18n?.language)
@@ -506,6 +516,13 @@ export const SyscoinTransactionDetails = ({
         )}
 
         {(() => {
+          if (isReplaced) {
+            return (
+              <p className="text-xs font-normal text-brand-gray300">
+                {t('transactions.replaced')}
+              </p>
+            );
+          }
           // Detect SPT tx (either explicit tokenType or vout with assetInfo)
           const normalizedType = getSyscoinTransactionTypeLabel(tokenType);
           const isSptTx = hasTokenInfo || normalizedType !== 'Transaction';
@@ -574,6 +591,7 @@ export const SyscoinTransactionDetails = ({
       )}
 
       {!isConfirmed &&
+        !isReplaced &&
         !isTxCanceled &&
         !hasTokenInfo &&
         (ownedReplacementTarget ||

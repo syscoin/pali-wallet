@@ -178,7 +178,7 @@ test.describe('visual network fixture boundaries', () => {
       )
     );
     expect(address).toBe(expected);
-    expect(address).toBe('0x51A1459ad911dE3b4BD9ae8A8AD324480519f81F');
+    expect(address).toBe('0x211aE817DAEdF0b7b5b90E2e824B6E9c9276A17d');
     expect(address).not.toBe(value.address);
     expect(result(value, 'eth_getCode', [address, 'latest'])).toBe('0x');
     expect(result(value, 'eth_getBalance', [address, 'latest'])).toBe('0x0');

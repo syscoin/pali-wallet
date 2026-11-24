@@ -1082,6 +1082,115 @@ it('reads a saved transfer only from its authenticated original route and never 
   ).toEqual({ outpoints: [], submitted: new Set() });
 });
 
+it('projects only the canonical exact-byte winner onto its authenticated replacement ancestors', async () => {
+  const c = await retainedFixture();
+  const original = c.transaction;
+  const first = {
+    ...record(0xfffffffd, 1200),
+    url: savedPost,
+    replacementOf: original.txid,
+  };
+  const winner = {
+    ...record(0xfffffffd, 1400),
+    url: savedPost,
+    replacementOf: first.txid,
+  };
+  const unrelated = { ...record(0xfffffffd, 1400, 6), url: savedPost };
+  await c.records.acknowledge(c.session, owner, original.txid);
+  await c.records.persist(c.session, first);
+  await c.records.acknowledge(c.session, owner, first.txid);
+  await c.records.persist(c.session, winner);
+  await c.records.acknowledge(c.session, owner, winner.txid);
+  await c.records.persist(c.session, unrelated);
+  const onReplacementObservation = jest.fn();
+  const records = new UtxoSignedRecords(c.storage, c.storage);
+  const blockHash = 'f'.repeat(64);
+  let confirmed = false;
+  let exactBytes = true;
+  let canonical = true;
+  const transport = c.fetch.getMockImplementation()!;
+  c.fetch.mockImplementation(async (url, init) => {
+    if (url === savedStatus + 'tx/' + winner.txid)
+      return identityResponse(url, {
+        txid: winner.txid,
+        hex: exactBytes ? winner.rawTransaction : first.rawTransaction,
+        confirmations: confirmed ? 1 : 0,
+        blockHash: confirmed ? blockHash : undefined,
+        blockHeight: confirmed ? 10 : -1,
+      });
+    if (url === savedStatus + 'block-index/10')
+      return identityResponse(url, {
+        blockHash: canonical ? blockHash : 'e'.repeat(64),
+      });
+    return transport(url, init);
+  });
+  const observe = () =>
+    observeRetainedUtxo({
+      ...savedStatusRequest(c),
+      records,
+      txid: winner.txid,
+      onReplacementObservation,
+    });
+
+  await expect(observe()).resolves.toBe('seen');
+  expect(onReplacementObservation).toHaveBeenLastCalledWith(
+    winner.txid,
+    undefined
+  );
+  confirmed = true;
+  exactBytes = false;
+  await expect(observe()).resolves.toBe('unknown');
+  expect(onReplacementObservation).toHaveBeenLastCalledWith(
+    winner.txid,
+    undefined
+  );
+  exactBytes = true;
+  canonical = false;
+  await expect(observe()).resolves.toBe('confirmed');
+  expect(onReplacementObservation).toHaveBeenLastCalledWith(
+    winner.txid,
+    undefined
+  );
+  canonical = true;
+  await expect(observe()).resolves.toBe('confirmed');
+  expect(onReplacementObservation).toHaveBeenLastCalledWith(winner.txid, {
+    blockHash,
+    replacedTxids: [first.txid, original.txid],
+  });
+  confirmed = false;
+  await expect(observe()).resolves.toBe('seen');
+  expect(onReplacementObservation).toHaveBeenLastCalledWith(
+    winner.txid,
+    undefined
+  );
+  const entered = deferred();
+  const release = deferred();
+  const readAncestors = records.activityReplacementAncestors.bind(records);
+  jest
+    .spyOn(records, 'activityReplacementAncestors')
+    .mockImplementationOnce(async (...args) => {
+      entered.finish();
+      await release.promise;
+      return readAncestors(...args);
+    });
+  confirmed = true;
+  const superseded = expect(observe()).rejects.toThrow(
+    'UTXO observation changed'
+  );
+  await entered.promise;
+  confirmed = false;
+  await expect(observe()).resolves.toBe('seen');
+  release.finish();
+  await superseded;
+  expect(onReplacementObservation).toHaveBeenLastCalledWith(
+    winner.txid,
+    undefined
+  );
+  expect(await records.readExact(c.session, owner, original.txid)).toEqual(
+    unsignedRecord(original)
+  );
+});
+
 it('protects the confirmed record during an old-provider check and after an identity failure', async () => {
   const c = await retainedFixture();
   const request = savedStatusRequest(c);

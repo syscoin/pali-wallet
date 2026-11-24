@@ -209,19 +209,12 @@ const addresses = {
     generated.accountImplementation
   ),
 };
-generated.factory = appendAddresses(
-  artifactBytecode('PaliSmartAccountFactory', 'PaliSmartAccountFactory'),
-  addresses.accountImplementation,
-  entryPoint
-);
-
 for (const id of [
   'ecdsaValidator',
   'p256WebAuthnValidator',
   'slhDsaVerifier',
   'compositeValidator',
   'guardianRecoveryModule',
-  'factory',
 ]) {
   addresses[id] = create2(deployer, salt(names[id]), generated[id]);
 }
@@ -237,6 +230,16 @@ addresses.slhDsaValidator = create2(
   salt(names.slhDsaValidator),
   slhDsaValidatorInitCode
 );
+
+generated.factory = appendAddresses(
+  artifactBytecode('PaliSmartAccountFactory', 'PaliSmartAccountFactory'),
+  addresses.accountImplementation,
+  entryPoint,
+  addresses.ecdsaValidator,
+  addresses.p256WebAuthnValidator,
+  addresses.slhDsaValidator
+);
+addresses.factory = create2(deployer, salt(names.factory), generated.factory);
 
 let nextSource = originalSource;
 for (const [key, bytecode] of Object.entries(generated)) {

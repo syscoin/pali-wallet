@@ -15,7 +15,7 @@ As smart accounts da Pali são contas de contrato que a Pali pode criar, conecta
 
 `PaliSmartAccount` executa chamadas e valida assinaturas por módulos estilo ERC-7579. `PaliSmartAccountFactory` deriva endereços determinísticos e implanta contas. A Pali prepara execuções com codificação estilo ERC-4337 e usa EIP-1271 para assinaturas de contrato.
 
-A conta é implantada primeiro com um validador ECDSA controlado pela carteira. Se a dapp pediu passkey ou outro validador suportado, a Pali instala o validador solicitado e remove o bootstrap validator com uma execução da conta.
+A fábrica aceita seus módulos configurados de ECDSA, P-256 WebAuthn e SLH-DSA como validadores iniciais. A conta os instala na ordem indicada e deixa o último ativo. Em `wallet_prepareSmartAccount`, a extensão implanta a conta com um validador ECDSA controlado pela carteira para poder autorizar a troca pelo autenticador solicitado pela dapp.
 
 ## Dois papéis: validadores assinam, guardiões recuperam
 

@@ -20,7 +20,7 @@ title: 创建和恢复智能账户
 | 参数 | 含义 |
 | --- | --- |
 | `salt` | Pali 根据钱包锚点、账户索引、链和账户版本派生的确定性部署盐值。 |
-| `initialValidator` | 引导部署所用的验证器模块。Pali 使用钱包控制的 ECDSA 验证器来进行确定性设置。 |
+| `initialValidator` | 请选择工厂配置的 ECDSA、P-256 WebAuthn 或 SLH-DSA 模块之一。若以列表指定初始验证器，则顺序任意，最后一个验证器成为活动验证器。Pali 的 `wallet_prepareSmartAccount` 流程首先使用由钱包控制的 ECDSA 验证器。 |
 | `initData` | 编码后的验证器初始化数据。 |
 
 部署完成后，Pali 可以在一次智能账户批处理中安装请求的验证器，并移除引导验证器。因此，dapp 可以请求由通行密钥控制的账户，同时 Pali 仍能保持首次部署路径的确定性。

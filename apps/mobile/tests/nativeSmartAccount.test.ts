@@ -96,6 +96,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const possessionViews: { validator: string; hash: string; proof: string }[] = [];
   const signedDisclosures: { operationHash: string; signature: string }[] = [];
   let checkAuthorizationAtDisclosure = false;
+  let invalidSimulationParent = false;
+  let smartSendGatewayError: 'before-forwarding' | 'after-acceptance' | undefined;
   let nextPayerEstimate: (() => void | Promise<void>) | undefined;
   let payerGasEstimate = '0x186a0';
   const externalFinancialProofs: {hash:string;signature:string}[] = [];
@@ -128,6 +130,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let onInnerNonceRead: ((tag: string) => void) | undefined;
   let wrongChain = false;
   let blockedRecipient = false;
+  let beforeRecipientPolicy: (() => Promise<void>) | undefined;
   let smartBalance = '0x0';
   let payerBalance = '0x1000000000000000';
   let pendingPayerBalance: string | undefined;
@@ -275,7 +278,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             body: JSON.stringify({jsonrpc:'2.0', id:request.id, method:'eth_getBlockByNumber', params:[request.params[1], false]}),
           });
           const simulationParent = guardianParent ? (await guardianParent.json()).result : observedHead;
-          result = [{parentHash: simulationParent.hash, number: `0x${(BigInt(simulationParent.number)+1n).toString(16)}`,
+          result = [{parentHash: invalidSimulationParent ? '0x' + '00'.repeat(32) : simulationParent.hash,
+            number: invalidSimulationParent ? simulationParent.number : `0x${(BigInt(simulationParent.number)+1n).toString(16)}`,
             transactions: calls.map((call: any) => ({...call, input: call.data})),
             calls: calls.map((call: any) => {
               if (call.to.toLowerCase() !== getPaliEntryPointAddress(Number(network.chainId)).toLowerCase()) return {status:'0x1', gasUsed:'0x5208', logs:[]};
@@ -329,6 +333,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const inventory = inspectEvmSignedBundle(saved, identity.profileId);
           const authorizations = JSON.parse(saved).authorizations?.length ?? 0;
           assert.equal(inventory.transactions, submitted.length + 1 + authorizations);
+          const smartExecution = Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId));
+          if (smartExecution && smartSendGatewayError === 'before-forwarding')
+            return new Response(null, { status: 502 });
           if (Transaction.from(request.params[0]).to?.toLowerCase() === PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase()) {
             const signed = Transaction.from(request.params[0]);
             assert(readPreparedRecord);
@@ -340,9 +347,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             infrastructureBroadcasts.push({ rawTransaction: request.params[0], pending: structuredClone(pending) });
           }
           submitted.push(request.params[0]);
-          if (Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId))) { if (!deployed) deployedByBroadcast = true; deployed = true; }
+          if (smartExecution) { if (!deployed) deployedByBroadcast = true; deployed = true; }
           result = Transaction.from(request.params[0]).hash;
           await afterBroadcast?.();
+          if (smartExecution && smartSendGatewayError === 'after-acceptance')
+            return new Response(null, { status: 502 });
           if (failInfrastructureBroadcast && Transaction.from(request.params[0]).to?.toLowerCase() === PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase())
             throw Error('connection lost after infrastructure submission');
         }
@@ -560,7 +569,10 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         }
       } };
     } } : {}),
-    checkSmartAccountAddress: async () => ({ isBlacklisted: blockedRecipient, severity: 'high' }),
+    async checkSmartAccountAddress() {
+      await beforeRecipientPolicy?.();
+      return { isBlacklisted: blockedRecipient, severity: 'high' };
+    },
     ensureCryptoReady: async () => undefined, readEvmRetirement: null, openStorage,
     connectionFetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init),
     async observeActivity(network, expected, signal, guard) {
@@ -589,6 +601,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     get completedSecretLeases() { return completedSecretLeases; },
     signedDisclosures,
     checkAuthorizationAtDisclosure() {checkAuthorizationAtDisclosure=true;},
+    rejectSimulationParent() { invalidSimulationParent = true; },
+    rejectSmartSendAcknowledgement(stage: 'before-forwarding' | 'after-acceptance') { smartSendGatewayError = stage; },
     onNextPayerEstimate(check: () => void | Promise<void>) { nextPayerEstimate = check; },
     holdNextPayerEstimate() {
       const ready = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
@@ -668,6 +682,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
     reorg() { readReceipts = false; nonceReset = true; },
     blockRecipient() { blockedRecipient = true; },
+    onRecipientPolicy(hook: () => Promise<void>) { beforeRecipientPolicy = hook; },
     undeployed() { deployed = false; },
     deployed(code = '0x01') { deployed = true; deployedCode = code; guardian = undefined; },
     interruptAfterReceipt() { interruptAfterReceipt = true; },
@@ -2007,6 +2022,50 @@ test('smart native sends reject invalid input and blocked recipients before auth
 });
 
 
+for (const outcome of ['allow', 'cancel'] as const) {
+  test(`Smart MAX waits for recipient policy before starting RPC reads (${outcome})`, async () => {
+    const f = await fixture();
+    let operation: NativeSmartAccountOperation | undefined;
+    const policyStarted = Promise.withResolvers<void>();
+    const policyResult = Promise.withResolvers<void>();
+    try {
+      await f.change({ kind: 'create-smart', label: 'Smart sender' });
+      f.fundedSmart();
+      f.onRecipientPolicy(() => {
+        policyStarted.resolve();
+        return policyResult.promise;
+      });
+      operation = await f.runtime.openSmartAccountSend(
+        '0x2222222222222222222222222222222222222222', { kind: 'maximum' }, () => undefined, null
+      );
+      const before = f.calls.length;
+      const prepare = operation.prepare();
+      await Promise.race([
+        policyStarted.promise,
+        prepare.then(() => { throw new Error('Recipient policy was not checked'); }),
+      ]);
+      assert.deepEqual(f.calls.slice(before), []);
+      if (outcome === 'cancel') {
+        await operation.dispose();
+        await prepare;
+        policyResult.resolve();
+        assert.deepEqual(f.calls.slice(before), []);
+      } else {
+        policyResult.resolve();
+        await prepare;
+        assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+        assert(f.calls.slice(before).includes('eth_chainId'));
+      }
+      assert.equal(f.signatures.length, 0);
+      assert.equal(f.submitted.length, 0);
+    } finally {
+      policyResult.resolve();
+      await operation?.dispose();
+      await f.close();
+    }
+  });
+}
+
 test('locking a native Smart send during its payer quote stops broadcast', async () => {
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
@@ -2020,6 +2079,82 @@ test('locking a native Smart send during its payer quote stops broadcast', async
     assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(f.submitted.length, 0);
   } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const failure of ['simulation', 'before-forwarding', 'after-acceptance'] as const)
+test(`native Smart payer reservation distinguishes simulation refusal from a gateway error (${failure})`, async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  let transfers: NativeTransfers | undefined;
+  try {
+    const recipient = '0x' + '22'.repeat(20);
+    await f.change({ kind: 'create-smart', label: 'Smart payer refusal' });
+    f.fundedSmart(); f.deployed(); f.checkAuthorizationAtDisclosure();
+    if (failure === 'simulation') f.rejectSimulationParent();
+    else f.rejectSmartSendAcknowledgement(failure);
+    operation = await f.runtime.openSmartAccountSend(recipient, { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    const prepared = operation.getSnapshot();
+    assert.equal(prepared.phase, 'authorize');
+    await operation.authorize(prepared.revision);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.payerSignatures.length, 1);
+    assert(f.calls.includes('eth_simulateV1'));
+    assert.equal(f.calls.includes('eth_sendRawTransaction'), failure !== 'simulation');
+    assert.equal(f.submitted.length, failure === 'after-acceptance' ? 1 : 0);
+
+    await operation.dispose();
+    operation = undefined;
+    await f.reopen();
+    await f.owner.unlock();
+    const signal = new AbortController().signal;
+    const activity = await f.runtime.activity!.load(() => undefined, signal);
+    assert.deepEqual(activity.locals.map(row => row.hash), failure === 'simulation'
+      ? [] : [Transaction.from(f.payerSignatures[0]!).hash]);
+    assert.deepEqual(activity.smartAuthorizations?.entries.map(entry => entry.operationHash), [prepared.userOperationHash]);
+    assert.deepEqual(activity.smartAuthorizations?.withOuterOperationHashes, failure === 'simulation'
+      ? [] : [prepared.userOperationHash]);
+
+    if (failure === 'simulation') {
+      await f.change({ kind: 'select', id: 'hd:60:0' });
+      transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+      await transfers.prepare(recipient, '0.000000000000000001');
+      assert.equal(transfers.getSnapshot().review?.nonce, '0', 'the payer can review another send at its unused nonce');
+    }
+  } finally { transfers?.dispose(); await operation?.dispose(); await f.close(); }
+});
+
+test('native deployment simulation refusal preserves its confirmed prefund and inner authorization', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Deployment simulation refusal' });
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined, null);
+    await operation.prepare();
+    const prepared = operation.getSnapshot();
+    assert.equal(prepared.phase, 'authorize');
+    assert.notEqual(prepared.authorization?.initCode, '0x');
+    f.rejectSimulationParent();
+    const stop = operation.subscribe(() => {
+      const review = operation!.getSnapshot().payerReview;
+      if (review) operation!.confirmPayer(review.id);
+    });
+    try { await operation.authorize(prepared.revision); } finally { stop(); }
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(operation.getSnapshot().fundingConfirmed, true);
+    assert.equal(f.payerSignatures.length, 2);
+    assert.deepEqual(f.submitted, [f.payerSignatures[0]]);
+    const signal = new AbortController().signal;
+    const smartActivity = await f.runtime.activity!.load(() => undefined, signal);
+    assert.deepEqual(smartActivity.smartAuthorizations?.entries.map(row => row.operationHash), [prepared.userOperationHash]);
+    assert.deepEqual(smartActivity.smartAuthorizations?.withOuterOperationHashes, []);
+
+    await operation.dispose();
+    operation = undefined;
+    await f.change({ kind: 'select', id: 'hd:60:0' });
+    const payerActivity = await f.runtime.activity!.load(() => undefined, signal);
+    assert.deepEqual(payerActivity.locals.map(row => row.hash), [Transaction.from(f.submitted[0]!).hash]);
+  } finally { await operation?.dispose(); await f.close(); }
 });
 
 test('native standalone authorization is encrypted before signed RPC disclosure and survives interrupted payer quoting', async () => {
@@ -6938,24 +7073,45 @@ for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`Sm
     if (kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records')) afterPersist?.();
   } }, true);
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  let transfers: NativeTransfers | undefined;
   try {
+    const recipient = '0x2222222222222222222222222222222222222222';
     await f.change({ kind: 'create-smart', label: 'Inner gas admission' });
     f.fundedSmart(); f.deployed(); f.holdReceipts();
     f.mutateSelectedSmart(account => {
       account.smartAccount!.isDeployed = true;
       account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(Number(account.smartAccount!.chainId), 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
     });
-    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    operation = await f.runtime.openSmartAccountSend(recipient, { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
     await operation.prepare();
-    assert.equal(operation.getSnapshot().phase, 'authorize');
+    const prepared = operation.getSnapshot();
+    assert.equal(prepared.phase, 'authorize');
     if (boundary === 'payer-signing') f.onPayerSignature(f.increaseInnerGas);
     else f.onNextPayerEstimate(() => { afterPersist = f.increaseInnerGas; });
-    await operation.authorize(operation.getSnapshot().revision);
+    const beforeAdmission = f.calls.length;
+    await operation.authorize(prepared.revision);
     assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.signatures.length, 1);
     assert.equal(f.payerSignatures.length, 1);
     assert.equal(f.submitted.length, 0);
-    await assertRetainedSmartSendRecords(f, 1);
-  } finally { operation?.dispose(); await f.close(); }
+    const admissionCalls = f.calls.slice(beforeAdmission);
+    assert(admissionCalls.includes('eth_simulateV1'));
+    assert.equal(admissionCalls.includes('eth_sendRawTransaction'), false);
+
+    await operation.dispose();
+    operation = undefined;
+    await f.reopen();
+    await f.owner.unlock();
+    const activity = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.deepEqual(activity.locals, []);
+    assert.deepEqual(activity.smartAuthorizations?.entries.map(entry => entry.operationHash), [prepared.userOperationHash]);
+    assert.deepEqual(activity.smartAuthorizations?.withOuterOperationHashes, []);
+
+    await f.change({ kind: 'select', id: 'hd:60:0' });
+    transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    await transfers.prepare(recipient, '0.000000000000000001');
+    assert.equal(transfers.getSnapshot().review?.nonce, String(Transaction.from(f.payerSignatures[0]!).nonce));
+  } finally { transfers?.dispose(); await operation?.dispose(); await f.close(); }
 });
 
 for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const)
