@@ -102,13 +102,17 @@ async function post(
     return response;
   });
   const response = await abortable(pending, signal);
-  if (!response.ok || response.redirected || response.url !== url) {
+  if (!response.ok || response.redirected !== false || response.url !== url) {
     cancelResponseBody(response);
     throw new Error('Blockbook submission response is unavailable');
   }
   const text = await boundedResponseText(response, signal, ACK_BYTES);
   const bounded = new Response(text, { status: response.status });
-  Object.defineProperty(bounded, 'url', { value: response.url });
+  // React Native's Response constructor does not initialize redirected.
+  Object.defineProperties(bounded, {
+    url: { value: url },
+    redirected: { value: false },
+  });
   return bounded;
 }
 

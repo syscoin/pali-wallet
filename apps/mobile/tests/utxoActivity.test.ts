@@ -181,10 +181,99 @@ test('screen auto-loads only when current/foreground and coalesces duplicate loa
   const f=fixture(), a=authority(f);a.unlock();let foreground=false;const c=new UtxoActivity(a,()=>foreground);c.activate();await c.load();assert.equal(f.calls.length,0);
   foreground=true;c.setFocused(true);await c.load();await settle(c);assert.equal(c.getSnapshot().rows.length,20);assert.equal(f.calls.filter(p=>p.includes('/address/')).length,1);c.dispose();
 });
+test('open Activity quietly updates a pending first-page row and stops polling when confirmed', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let mined = false, offline = false;
+  const f = fixture({ replace(path, body) {
+    if (path.includes('/address/') && body.page === 1) {
+      if (offline) return new Response(null, { status: 503 });
+      if (!mined) body.transactions[0] = pendingObservation(body.transactions[0]);
+    }
+    return body;
+  } });
+  const a = authority(f); a.unlock();
+  const c = new UtxoActivity(a, () => true); c.activate();
+  try {
+    await settle(c);
+    await c.loadMore();
+    const before = c.getSnapshot();
+    assert.equal(before.page, 2);
+    assert.equal(before.rows.find(row => row.txid === ID(1))?.block, null);
+    const observations: string[] = [];
+    c.subscribe(() => observations.push(c.getSnapshot().status));
+
+    offline = true;
+    t.mock.timers.tick(15_000); await tick();
+    assert.equal(c.getSnapshot(), before);
+    assert.deepEqual(observations, []);
+
+    offline = false; mined = true;
+    t.mock.timers.tick(15_000); await tick();
+    const after = c.getSnapshot();
+    assert.equal(after.rows.find(row => row.txid === ID(1))?.block?.height, 190);
+    assert.equal(after.page, before.page);
+    assert.equal(after.rows.length, before.rows.length);
+    assert.deepEqual(observations, ['ready']);
+
+    const calls = f.calls.length;
+    t.mock.timers.tick(60_000); await tick();
+    assert.equal(f.calls.length, calls);
+  } finally { c.dispose(); t.mock.timers.reset(); }
+});
+test('leaving open Activity aborts an in-flight pending refresh', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const entered = gate(), release = gate();
+  let hold = false;
+  const f = fixture({ count: 1, async hold(path) {
+    if (hold && path.includes('/address/')) { entered.resolve(); await release.promise; }
+  }, replace(path, body) {
+    if (!hold && path.includes('/address/')) body.transactions = body.transactions.map(pendingObservation);
+    return body;
+  } });
+  const a = authority(f); a.unlock();
+  const c = new UtxoActivity(a, () => true); c.activate();
+  try {
+    await settle(c);
+    hold = true;
+    t.mock.timers.tick(15_000); await entered.promise;
+    const calls = f.calls.length;
+    c.setFocused(false);
+    assert.equal(f.signals.at(-1)?.aborted, true);
+    release.resolve();
+    t.mock.timers.tick(60_000); await tick();
+    assert.equal(c.getSnapshot().status, 'idle');
+    assert.equal(f.calls.length, calls);
+  } finally { release.resolve(); c.dispose(); t.mock.timers.reset(); }
+});
 test('older/newer windows stay at most100 rows while loading beyond page five',async()=>{
   const f=fixture({count:160}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);
   for(let n=2;n<=6;n++)await c.loadMore();assert.equal(c.getSnapshot().page,6);assert.equal(c.getSnapshot().firstPage,2);assert.equal(c.getSnapshot().rows.length,100);assert.equal(c.getSnapshot().hasNewer,true);
   await c.loadNewer();assert.equal(c.getSnapshot().firstPage,1);assert.equal(c.getSnapshot().page,5);assert.equal(c.getSnapshot().rows.length,100);c.dispose();
+});
+test('paging back to the newest Activity restarts the pending refresh', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let mined = false;
+  const f = fixture({ count: 120, replace(path, body) {
+    if (!mined && path.includes('/address/') && body.page === 1) body.transactions[0] = pendingObservation(body.transactions[0]);
+    return body;
+  } });
+  const a = authority(f); a.unlock();
+  const c = new UtxoActivity(a, () => true); c.activate();
+  try {
+    await settle(c);
+    for (let page = 2; page <= 6; page++) await c.loadMore();
+    assert.equal(c.getSnapshot().firstPage, 2);
+    const calls = f.calls.length;
+    t.mock.timers.tick(15_000); await tick();
+    assert.equal(f.calls.length, calls);
+
+    await c.loadNewer();
+    assert.equal(c.getSnapshot().firstPage, 1);
+    assert.equal(c.getSnapshot().rows.find(row => row.txid === ID(1))?.block, null);
+    mined = true;
+    t.mock.timers.tick(15_000); await tick();
+    assert.equal(c.getSnapshot().rows.find(row => row.txid === ID(1))?.block?.height, 190);
+  } finally { c.dispose(); t.mock.timers.reset(); }
 });
 test('fresh reorg and pending observations replace prior same-txid rows',async()=>{
   let pending=false;const f=fixture({count:1,replace(path,body){if(pending&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:-1,blockHash:undefined,confirmations:0});return body;}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);pending=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block,null);c.dispose();
