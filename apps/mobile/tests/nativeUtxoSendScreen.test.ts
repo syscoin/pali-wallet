@@ -54,6 +54,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     useSyncExternalStore(_subscribe: unknown, read: () => unknown) { cell(); return read(); },
   };
   let hardware: (() => boolean) | undefined, backs = 0;
+  const backSubmissions: (boolean | undefined)[] = [];
   const native = { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'ScrollView', 'View'].map((name) => [name, name])),
     Platform: { OS: 'android' }, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: unknown) => value },
     BackHandler: { addEventListener(_name: string, callback: () => boolean) { hardware = callback; return { remove() { hardware = undefined; } }; } } };
@@ -106,13 +107,13 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
   let opens = 0;
   const open = async () => { opens++; return service; };
   const render = () => { cursor = 0; const tree = module.exports.NativeUtxoSendScreen({ accountLabel: 'Account', asset,
-    initialDraft, maximumAmount: maximum, availableAmount, network, open, onChangeNetwork(draft: unknown) { networkDrafts.push(draft); networkChanges++; }, onViewTransaction(txid: string) { openedTransactions.push(txid); }, onBack() { backs++; } }) as Element;
+    initialDraft, maximumAmount: maximum, availableAmount, network, open, onChangeNetwork(draft: unknown) { networkDrafts.push(draft); networkChanges++; }, onViewTransaction(txid: string) { openedTransactions.push(txid); }, onBack(submitted?: boolean) { backs++; backSubmissions.push(submitted); } }) as Element;
     effects.splice(0).forEach((run) => run()); return tree; };
   const press = (title: string) => { const button = all(render()).find((node) => node.type === 'Button' && node.props.title === title); assert(button, title); button.props.onPress(); };
   const edit = (label: string, value: string) => { const input = all(render()).find((node) => node.type === 'Input' && node.props.accessibilityLabel === label); assert(input, label); input.props.onChangeText(value); };
   const review = () => { const screen = all(render()).find((node) => node.type === 'Screen')!; screen.props.footer.props.onPress(); };
   return { render, privacy(hidden: boolean) { privacyHidden = hidden; }, press, edit, review, requests, reviews, authorized, openedTransactions, networkDrafts, counts: () => ({ cancels, confirmations, networkChanges }),
-    hardware() { assert(hardware); return hardware(); }, backs: () => backs,
+    hardware() { assert(hardware); return hardware(); }, backs: () => backs, backSubmissions,
     opens: () => opens,
     seedDraft(draft: NonNullable<typeof initialDraft>) { initialDraft = draft; },
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
@@ -201,6 +202,7 @@ for (const outcome of ['submitted', 'unknown', 'leave'] as const) test(`Back dur
     if (outcome === 'leave') {
       leave.props.onPress();
       assert.equal(f.backs(), 1); assert.equal(f.counts().cancels, before.cancels + 1);
+      assert.deepEqual(f.backSubmissions, [undefined]);
     } else {
       if (outcome === 'unknown') f.failSubmissionUnknown();
       pending.resolve(); await tick();
@@ -384,7 +386,9 @@ test('submitted UTXO transaction action uses the saved hash and retires with the
   assert.deepEqual(f.openedTransactions, ['ab'.repeat(32)]);
   assert.equal(shown.find(node => node.type === 'Button' && node.props.title === 'Done')?.props.variant, 'secondary');
   shown.find(node => node.type === 'Header')!.props.onBack(); view.props.onPress();
-  assert.equal(f.openedTransactions.length, 1); f.close();
+  assert.equal(f.openedTransactions.length, 1);
+  assert.deepEqual(f.backSubmissions, [true]);
+  f.close();
 });
 
 test('successful native UTXO outcome retains the exact reviewed amount, recipient and fee', async () => {
@@ -428,6 +432,8 @@ test('unknown SPT submission retains its exact public summary and opens Activity
     f.press('View transaction');
     assert.deepEqual(f.openedTransactions, ['ab'.repeat(32)]);
     assert.equal(f.counts().confirmations, 1);
+    all(f.render()).find(node => node.type === 'Header')!.props.onBack();
+    assert.deepEqual(f.backSubmissions, [false]);
     assert.equal(f.requests.length, 1);
   } finally { f.close(); }
 });
