@@ -99,6 +99,34 @@ export const TransactionsPanel = () => {
       current = false;
     };
   }, [needsInitialRead, scopeKey, scope.account, scope.network]);
+  const refreshVisibleHistory =
+    !isBitcoinBased &&
+    Boolean(activeNetwork.apiUrl) &&
+    (historyState === 'ready' || historyState === 'error') &&
+    !networkTransition &&
+    !isSwitchingAccount;
+  const historyCheckedAt = currentHistory?.checkedAt;
+  useEffect(() => {
+    if (!refreshVisibleHistory) return;
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      void controllerEmitter(
+        ['wallet', 'refreshTransactionHistory'],
+        [scope, 'visible']
+      ).catch(() => undefined);
+    };
+    if (
+      historyCheckedAt !== undefined &&
+      Date.now() - historyCheckedAt >= 15_000
+    )
+      void refresh();
+    const interval = window.setInterval(refresh, 15_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [refreshVisibleHistory, historyCheckedAt, scope]);
   const startFailed = needsInitialRead && failedStartScope === scopeKey;
   const beginRetry = useRequestScope(scopeKey);
   const retryPending = useRef<() => boolean>();
