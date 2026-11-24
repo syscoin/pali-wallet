@@ -130,7 +130,7 @@ export function NativeUtxoSendScreen({
   asset?: NativeUtxoAsset;
   network: UtxoNetwork;
   open(assertCurrent: () => void): Promise<NativeUtxoSend>;
-  onBack(): void;
+  onBack(submitted?: boolean): void;
 }) {
   useNativeTranslation();
   const { hidden: hideBalances } = useBalancePrivacy();
@@ -237,10 +237,10 @@ export function NativeUtxoSendScreen({
   const close = () => {
     if (scannerOwner.current) { closeScanner(); return; }
     if (confirmation.current) { setLeavePrompt({ attempt: confirmation.current, open, replacement }); return; }
-    if (review && !busy) {
+    if (!outcome && review && !busy) {
       closeScanner(); send?.cancel(); setReview(null); setError(''); return;
     }
-    leave(onBack);
+    leave(() => onBack(outcome?.phase === 'submitted'));
   };
   useEffect(() => {
     const subscription = BackHandler.addEventListener(

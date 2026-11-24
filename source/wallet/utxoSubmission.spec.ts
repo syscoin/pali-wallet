@@ -461,6 +461,64 @@ it('atomically replaces a legacy encrypted transaction with unsigned recovery me
   );
 });
 
+it('preserves validated ACK metadata when the Response constructor omits it', async () => {
+  const c = context();
+  const transaction = record();
+  const originalResponse = globalThis.Response;
+  // React Native installs whatwg-fetch as the global Response constructor.
+  const { Response: NativeResponse } = jest.requireActual<{
+    Response: typeof Response;
+  }>('whatwg-fetch');
+  expect(new NativeResponse('').redirected).toBeUndefined();
+  const reply = new NativeResponse(
+    JSON.stringify({ result: transaction.txid })
+  );
+  Object.defineProperties(reply, {
+    url: { value: url },
+    redirected: { value: false },
+  });
+  const fetch = jest.fn(async () => reply);
+
+  globalThis.Response = NativeResponse;
+  try {
+    await expect(
+      submitReviewedUtxo({ ...c, record: transaction, fetch })
+    ).resolves.toEqual({ txid: transaction.txid });
+  } finally {
+    globalThis.Response = originalResponse;
+  }
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  ['a redirected response', true, url],
+  ['a response missing redirect metadata', undefined, url],
+  ['a response from a different URL', false, endpoint],
+])(
+  'leaves submission unknown for %s with the exact transaction ID',
+  async (_description, redirected, responseUrl) => {
+    const c = context();
+    const transaction = record();
+    const reply = Response.json({ result: transaction.txid });
+    Object.defineProperties(reply, {
+      redirected: { value: redirected },
+      url: { value: responseUrl },
+    });
+    const fetch = jest.fn(async () => reply);
+    await expect(
+      submitReviewedUtxo({ ...c, record: transaction, fetch })
+    ).rejects.toMatchObject({
+      code: 'UTXO_SUBMISSION_UNKNOWN',
+      transactionNotBroadcast: false,
+      txid: transaction.txid,
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(
+      await c.records.readExact(c.session, owner, transaction.txid)
+    ).toEqual(unsignedRecord(transaction));
+  }
+);
+
 it('retains a trusted acknowledgment for the same owner after reopening', async () => {
   const c = context();
   const transaction = record();

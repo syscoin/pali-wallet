@@ -21,7 +21,7 @@ const titleKeys: Record<Name, string> = {
 };
 async function fixture(language = 'en') {
   const engine = createInstance();
-  await engine.init({ initImmediate: false, lng: language, fallbackLng: 'en',
+  await engine.init({ initAsync: false, lng: language, fallbackLng: 'en',
     resources: { [language]: { translation: languageMessages(language) }, en: { translation: languageMessages('en') } },
     interpolation: { escapeValue: false } });
   const returned: unknown[][] = [], selected: unknown[][] = [];

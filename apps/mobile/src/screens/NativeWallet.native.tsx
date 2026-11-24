@@ -2206,7 +2206,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         if (!context || context.context !== guardianContext || AppState.currentState !== 'active' || !/^[0-9a-f]{64}$/i.test(hash)) return;
         setTransactionActivity({ context: context.context, hash }); rootOrigin.current = null; setStage('choose'); shell.restoreRoot('activity', context.identity);
       } : undefined}
-      asset={sendTarget.kind === 'spt' || sendTarget.kind === 'utxo' ? sendTarget.asset : undefined} maximumAmount={sendTarget.kind === 'spt' ? sendTarget.maximumAmount : undefined} accountLabel={accountLabel} onBack={closeStage} />;
+      asset={sendTarget.kind === 'spt' || sendTarget.kind === 'utxo' ? sendTarget.asset : undefined} maximumAmount={sendTarget.kind === 'spt' ? sendTarget.maximumAmount : undefined} accountLabel={accountLabel} onBack={submitted => {
+        if (submitted && sendTarget.kind === 'utxo-replacement') {
+          const { txid } = sendTarget.replacement;
+          setTransactionActivity(current => current && current.context === sendDraft?.origin.context && current.hash === txid ? null : current);
+        }
+        closeStage();
+      }} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
     let content: React.ReactNode;

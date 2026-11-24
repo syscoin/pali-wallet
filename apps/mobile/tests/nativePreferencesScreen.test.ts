@@ -17,7 +17,7 @@ const all = (value: any): Element[] => Array.isArray(value) ? value.flatMap(all)
   : value && typeof value === 'object' && 'children' in value ? [value, ...value.children.flatMap(all), ...all(value.props.footer)] : [];
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function fixture() {
-  const engine = createInstance(); await engine.init({ initImmediate: false, lng: 'en', fallbackLng: 'en', resources: { en: { translation: languageMessages('en') } } });
+  const engine = createInstance(); await engine.init({ initAsync: false, lng: 'en', fallbackLng: 'en', resources: { en: { translation: languageMessages('en') } } });
   let raw: string | null = null, writes = 0, backs = 0, active = 'active', owner = true;
   let waitWrite: (() => Promise<void>) | undefined;
   const preferences = createLanguagePreferences({ engine, load: async (language) => languageMessages(language),

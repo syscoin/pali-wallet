@@ -16,6 +16,14 @@ test('localized fractional input reaches unchanged exact coin, UTXO and token pa
   assert.equal(parseUnsignedTokenAmount(smallestToken, 255), '1');
 });
 
+test('comma input works on runtimes without NumberFormat formatToParts', (t) => {
+  t.mock.method(Intl.NumberFormat.prototype, 'formatToParts', () => {
+    throw new TypeError('formatToParts is unavailable');
+  });
+  assert.equal(normalizeDecimalInput('0,125', 'es'), '0.125');
+  assert.equal(normalizeDecimalInput('0,125', 'en'), '0,125');
+});
+
 test('editing stays possible without treating grouping or mixed separators as amounts', () => {
   for (const [input, expected] of [['', ''], ['0,', '0.'], [',', '.'], [',2', '.2']] as const)
     assert.equal(normalizeDecimalInput(input!, 'de'), expected);

@@ -6,7 +6,7 @@ export const languageMessages = (language: string) => JSON.parse(readFileSync(
   new NodeURL(`../../../source/assets/locales/${language}.json`, import.meta.url), 'utf8'
 ));
 export const englishI18n = createInstance();
-await englishI18n.init({ initImmediate: false, lng: 'en', fallbackLng: 'en',
+await englishI18n.init({ initAsync: false, lng: 'en', fallbackLng: 'en',
   resources: { en: { translation: languageMessages('en') } }, interpolation: { escapeValue: false } });
 /** VM component hosts keep their React fixture; translations use the real engine. */
 export const nativeTranslationFixture = {

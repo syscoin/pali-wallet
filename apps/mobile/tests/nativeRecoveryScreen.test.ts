@@ -344,7 +344,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
 
 test('recovery renders controller errors in the chosen language without English fallback', async () => {
   const i18n = createInstance();
-  await i18n.init({ initImmediate: false, lng: 'de', fallbackLng: false,
+  await i18n.init({ initAsync: false, lng: 'de', fallbackLng: false,
     resources: { de: { translation: languageMessages('de') } } });
   const f = setup('entry', { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) });
   try {

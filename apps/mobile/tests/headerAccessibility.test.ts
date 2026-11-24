@@ -7,7 +7,7 @@ import { CHAIN_IDS } from '../../../source/shared/evmNetworks.ts';
 
 test('the shared Back control follows the chosen language and keeps its action', async () => {
   const i18n = createInstance();
-  await i18n.init({ initImmediate: false, lng: 'en', fallbackLng: 'en',
+  await i18n.init({ initAsync: false, lng: 'en', fallbackLng: 'en',
     resources: { en: { translation: languageMessages('en') }, fr: { translation: languageMessages('fr') } } });
   const f = screenFixture(new URL('../src/ui.tsx', import.meta.url), 'Header', {
     './platform/localization': { useNativeTranslation: () => ({ t: i18n.t.bind(i18n) }) },
