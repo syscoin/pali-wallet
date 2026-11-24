@@ -379,6 +379,7 @@ describe('explicit EVM activity and nonce reset', () => {
       isBitcoinBased: true,
       forceRefresh: true,
       bypassCompletedCache: true,
+      retainHistoryStatus: false,
     });
     expect(writes).toHaveBeenCalled();
     expect(() =>
