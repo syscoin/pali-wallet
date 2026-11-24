@@ -4,10 +4,11 @@ export function normalizeDecimalInput(value: string, locale: string): string {
   // spaces or mixed separators, which could silently change the intended value.
   if (!/^[0-9]*,[0-9]*$/.test(value) || !locale) return value;
   try {
-    const separator = new Intl.NumberFormat(locale)
-      .formatToParts(1.1)
-      .find((part) => part.type === 'decimal')?.value;
-    return separator === ',' ? value.replace(',', '.') : value;
+    // Hermes on iOS supports format(), but not NumberFormat.formatToParts().
+    const sample = new Intl.NumberFormat(locale, { useGrouping: false }).format(
+      1.1
+    );
+    return sample.includes(',') ? value.replace(',', '.') : value;
   } catch {
     return value;
   }
