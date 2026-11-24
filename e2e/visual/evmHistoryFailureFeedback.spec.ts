@@ -332,6 +332,29 @@ test('configured EVM history explains failed reads and retries the same account 
       }
     );
 
+    // Keep this scenario driven by keyboard Retry. Forward every other
+    // message through Chrome so the worker observes the genuine request.
+    await page.evaluate(() => {
+      const send = chrome.runtime.sendMessage;
+      chrome.runtime.sendMessage = ((...args: any[]) => {
+        const message = args[0];
+        if (
+          message?.type === 'CONTROLLER_ACTION' &&
+          message.data?.methods?.join('.') ===
+            'wallet.refreshTransactionHistory' &&
+          message.data?.params?.[1] === 'visible'
+        ) {
+          const callback = args.at(-1);
+          if (typeof callback === 'function') {
+            queueMicrotask(callback);
+            return;
+          }
+          return Promise.resolve();
+        }
+        return Reflect.apply(send, chrome.runtime, args);
+      }) as typeof chrome.runtime.sendMessage;
+    });
+
     const worker = wallet.context.serviceWorkers()[0];
     expect(worker).toBeTruthy();
     // Additive, read-only request observation. It never replies, invokes the

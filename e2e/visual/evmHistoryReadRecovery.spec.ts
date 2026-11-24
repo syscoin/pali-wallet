@@ -376,6 +376,10 @@ test('initial EVM explorer failure recovers on the next ordinary alarm before fa
     await step(
       'native toolbar popup arms the existing one-minute ordinary alarm',
       async () => {
+        // Keep both wallet views off Activity so its visible refresh cannot
+        // recover the held explorer read ahead of the ordinary alarm.
+        await page.locator('#assets-btn').click();
+        await expect(page).toHaveURL(/#\/home\?tab=assets/);
         const openedAt = Date.now();
         await worker.evaluate(() => chrome.action.openPopup());
         // Do not click, reload, navigate or resize the driver tab after this
@@ -399,6 +403,20 @@ test('initial EVM explorer failure recovers on the next ordinary alarm before fa
               !popup ||
               value.alarm?.periodInMinutes !== 1 ||
               value.alarm.scheduledTime < openedAt + 45_000
+            )
+              return false;
+            if (
+              !(await page.evaluate(() => {
+                const view = chrome.extension.getViews({ type: 'popup' })[0];
+                if (!view) return false;
+                if (/#\/home\?tab=assets/.test(view.location.href)) return true;
+                // Use the popup's own Assets control without moving focus to
+                // the driver tab, which would close this native popup.
+                view.document
+                  .querySelector<HTMLButtonElement>('#assets-btn')
+                  ?.click();
+                return false;
+              }))
             )
               return false;
             scheduledTime = value.alarm.scheduledTime;
@@ -475,15 +493,6 @@ test('initial EVM explorer failure recovers on the next ordinary alarm before fa
               to: transaction.to,
             },
           ]);
-        await expect(
-          page.locator('#activity-panel-list').getByRole('button', {
-            name: en.notifications.clickToView,
-            exact: true,
-          })
-        ).toHaveCount(1);
-        await expect(
-          page.getByText(en.home.noIndexedActivity, { exact: true })
-        ).toHaveCount(0);
         const audit = await worker.evaluate(
           () => (globalThis as any).__evmHistoryRecoveryAudit
         );
@@ -519,6 +528,16 @@ test('initial EVM explorer failure recovers on the next ordinary alarm before fa
         );
         expect(historicalBlock).toBeLessThan(latestBlock - 30);
         observations.recovered = { state, audit, reads };
+        await page.locator('#activity-btn').click();
+        await expect(
+          page.locator('#activity-panel-list').getByRole('button', {
+            name: en.notifications.clickToView,
+            exact: true,
+          })
+        ).toHaveCount(1);
+        await expect(
+          page.getByText(en.home.noIndexedActivity, { exact: true })
+        ).toHaveCount(0);
       }
     );
     expect(rpcReads.some((read) => read.method === 'eth_getBalance')).toBe(
