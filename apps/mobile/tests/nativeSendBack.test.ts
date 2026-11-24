@@ -225,7 +225,7 @@ test('uncertain submission links the exact transaction to Activity', () => {
 
 test('French saved-state and capacity notices keep raw controller identity and suppress duplicate errors', async () => {
   const i18n = createInstance();
-  await i18n.init({ initImmediate: false, lng: 'fr', fallbackLng: 'en',
+  await i18n.init({ initAsync: false, lng: 'fr', fallbackLng: 'en',
     resources: { fr: { translation: languageMessages('fr') }, en: { translation: languageMessages('en') } },
     interpolation: { escapeValue: false } });
   const localization = { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) };
@@ -764,7 +764,7 @@ test('Smart replacement confirmation follows the retained payer connection requi
 
 test('shared decimal input normalizes locale commas only for decimal fields', async () => {
   const i18n = createInstance();
-  await i18n.init({ initImmediate: false, lng: 'fr', fallbackLng: false,
+  await i18n.init({ initAsync: false, lng: 'fr', fallbackLng: false,
     resources: { fr: { translation: languageMessages('fr') } }, interpolation: { escapeValue: false } });
   const localization = { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) };
   const f = setup(undefined, undefined, undefined, undefined, undefined, undefined, undefined, localization);

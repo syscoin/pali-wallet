@@ -8,7 +8,7 @@ import { languageMessages } from './localizationFixture.ts';
 const guard = () => undefined;
 async function fixture(initial: string | null = null) {
   const engine = createInstance();
-  await engine.init({ initImmediate: false, lng: 'en', fallbackLng: 'en', resources: { en: { translation: languageMessages('en') } }, interpolation: { escapeValue: false } });
+  await engine.init({ initAsync: false, lng: 'en', fallbackLng: 'en', resources: { en: { translation: languageMessages('en') } }, interpolation: { escapeValue: false } });
   let raw = initial, writes = 0, lost = false, failedLoad = false;
   let beforeWrite: (() => Promise<void>) | undefined, beforeResources: (() => Promise<void>) | undefined;
   const preferences = createLanguagePreferences({

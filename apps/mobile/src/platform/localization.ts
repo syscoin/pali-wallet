@@ -8,7 +8,7 @@ import { createLanguagePreferences } from '../core/languagePreferences.ts';
 
 export const nativeI18n = createInstance();
 const initialized = nativeI18n.use(initReactI18next).init({
-  initImmediate: false,
+  initAsync: false,
   lng: DEFAULT_PALI_LANGUAGE,
   supportedLngs: PALI_LANGUAGE_OPTIONS.map((language) => language.value),
   fallbackLng: DEFAULT_PALI_LANGUAGE,

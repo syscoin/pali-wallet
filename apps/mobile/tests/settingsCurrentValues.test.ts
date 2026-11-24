@@ -9,7 +9,7 @@ import { screenElements, screenFixture } from './screenFixture.ts';
 
 test('Settings shows the selected language, currency and scoped notification state', async () => {
   const i18n = createInstance();
-  await i18n.init({ initImmediate: false, lng: 'de', fallbackLng: false,
+  await i18n.init({ initAsync: false, lng: 'de', fallbackLng: false,
     resources: { de: { translation: languageMessages('de') } }, interpolation: { escapeValue: false } });
   let currency = 'eur', current = true, loads = 0;
   let notice = { status: 'ready', enabledScopeIds: ['owned'], permission: 'granted' };

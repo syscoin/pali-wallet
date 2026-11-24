@@ -456,7 +456,7 @@ test('unknown UTXO outcome opens Activity without another submission', async () 
 
 test('UTXO amount entry normalizes the selected language decimal before exact preparation', async () => {
   const i18n = createInstance();
-  await i18n.init({ initImmediate: false, lng: 'de', fallbackLng: false,
+  await i18n.init({ initAsync: false, lng: 'de', fallbackLng: false,
     resources: { de: { translation: languageMessages('de') } }, interpolation: { escapeValue: false } });
   const f = fixture(undefined, undefined, { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) });
   try {

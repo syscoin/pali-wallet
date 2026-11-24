@@ -15,9 +15,9 @@ const codes = ['SAVED_WALLET_UNVERIFIED', 'WRONG_PHRASE', 'AUTH_THROTTLED', 'INV
 for (const language of ['de', 'fr', 'es', 'pt', 'ja', 'ko', 'ru', 'zh']) {
   test(`${language} recovery and security consent resolve without English fallback`, async () => {
     const i18n = createInstance(), en = createInstance();
-    await Promise.all([i18n.init({ initImmediate: false, lng: language, fallbackLng: false,
+    await Promise.all([i18n.init({ initAsync: false, lng: language, fallbackLng: false,
       resources: { [language]: { translation: languageMessages(language) } } }),
-    en.init({ initImmediate: false, lng: 'en', fallbackLng: false, resources: { en: { translation: languageMessages('en') } } })]);
+    en.init({ initAsync: false, lng: 'en', fallbackLng: false, resources: { en: { translation: languageMessages('en') } } })]);
     const t = (key: string) => i18n.t(key), english = (key: string) => en.t(key);
     for (const key of consent) {
       assert(i18n.exists(key), key); assert.notEqual(t(key), key); assert.notEqual(t(key), english(key), key);
