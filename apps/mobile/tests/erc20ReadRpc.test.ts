@@ -2,7 +2,7 @@ import { PALI_INFRASTRUCTURE_BY_ID } from '../../../source/utils/smartAccount/de
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createErc20Reader } from '../src/portfolio/erc20ReadRpc.ts';
-import { getNativeNetwork } from '../src/custody/networkContext.ts';
+import { createNativeNetwork, getNativeNetwork } from '../src/custody/networkContext.ts';
 import type { EvmNetworkId } from '../src/custody/networkContext.ts';
 
 const holder = '0x52908400098527886E0F7030069857D2E4169EE7';
@@ -158,6 +158,78 @@ test('import verifies chain first and batches nine bounded reads into four envel
     `0x70a08231${holder.slice(2).toLowerCase().padStart(64, '0')}`
   );
 });
+
+const endpointCases: {
+  description: string;
+  rpcUrl: string;
+  responseUrl: string;
+  redirected?: boolean;
+  accepted?: boolean;
+}[] = [
+  {
+    description: 'accepts the transport root slash for an origin-only registration',
+    rpcUrl: 'http://127.0.0.1:8545',
+    responseUrl: 'http://127.0.0.1:8545/',
+    accepted: true,
+  },
+  {
+    description: 'accepts the exact registered path and query',
+    rpcUrl: 'http://127.0.0.1:8545/rpc?api=local',
+    responseUrl: 'http://127.0.0.1:8545/rpc?api=local',
+    accepted: true,
+  },
+  {
+    description: 'rejects a redirect to the canonical registration URL',
+    rpcUrl: 'http://127.0.0.1:8545',
+    responseUrl: 'http://127.0.0.1:8545/',
+    redirected: true,
+  },
+  ...([
+    ['a different origin', 'http://127.0.0.1:8546/rpc?api=local'],
+    ['a different path', 'http://127.0.0.1:8545/rpc/?api=local'],
+    ['a different query', 'http://127.0.0.1:8545/rpc?api=other'],
+    ['a malformed URL', 'not a URL'],
+  ] as const).map(([reason, responseUrl]) => ({
+    description: `rejects ${reason}`,
+    rpcUrl: 'http://127.0.0.1:8545/rpc?api=local',
+    responseUrl,
+  })),
+];
+for (const { description, rpcUrl, responseUrl, redirected, accepted } of endpointCases) {
+  test(`import ${description}`, async () => {
+    const base = getNativeNetwork('ethereum');
+    const network = createNativeNetwork({ ...base, id: 'custom:1', rpcUrl });
+    const methods: string[] = [];
+    const reader = createErc20Reader({
+      registrations: () => [network],
+      fetch: async (url, init) => {
+        assert.equal(url, rpcUrl);
+        assert.equal(init.redirect, 'error');
+        const body = JSON.parse(String(init.body)) as Request | Request[];
+        const rows = Array.isArray(body) ? body : [body];
+        const replies = rows.map((request) => {
+          methods.push(request.method);
+          return { jsonrpc: '2.0', id: request.id, result: result(request) };
+        });
+        const response = Response.json(Array.isArray(body) ? replies : replies[0]);
+        Object.defineProperties(response, {
+          url: { value: responseUrl },
+          redirected: { value: redirected ?? false },
+        });
+        return response;
+      },
+    });
+    const pending = reader.readToken(network.id, holder, contractAddress, new AbortController().signal);
+    if (accepted) {
+      assert.deepEqual(await pending, { metadata, units: ((1n << 256n) - 1n).toString() });
+      assert(methods.includes('eth_call'));
+    } else {
+      await assert.rejects(pending, { code: 'CANCELLED' });
+      assert.deepEqual(methods, ['eth_chainId', 'eth_getBlockByNumber']);
+    }
+  });
+}
+
 test('balance refresh preserves known zero and verifies stored precision without metadata fallback', async () => {
   const { reader, requests, posts } = readerWith((request) =>
     request.method === 'eth_call' &&

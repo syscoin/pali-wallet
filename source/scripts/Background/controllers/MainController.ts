@@ -9885,7 +9885,7 @@ class MainController {
 
   public refreshTransactionHistory(
     expectedScope: IWalletNavigationScope,
-    onlyIfMissing = false
+    onlyIfMissing: boolean | 'visible' = false
   ) {
     this.assertWalletReadyForSigning();
     const scope = getWalletNavigationScope();
@@ -9908,17 +9908,26 @@ class MainController {
     )
       return this.historyRetry.promise;
     const status = vaultGlobal.transactionHistoryStatus;
-    if (
-      onlyIfMissing &&
+    const sameScope =
       status?.scope.account === scope.account &&
-      status.scope.network === scope.network
+      status.scope.network === scope.network;
+    const visible = onlyIfMissing === 'visible';
+    if (
+      visible
+        ? vault.isBitcoinBased ||
+          !sameScope ||
+          status.state === 'pending' ||
+          (status.checkedAt !== undefined &&
+            Date.now() - status.checkedAt < 15_000)
+        : onlyIfMissing && sameScope
     )
       return Promise.resolve();
     const promise = this.updateUserTransactionsState({
       isBitcoinBased: vault.isBitcoinBased,
       activeNetwork: vault.activeNetwork,
-      forceRefresh: true,
+      forceRefresh: !visible,
       bypassCompletedCache: true,
+      retainHistoryStatus: visible,
     }).finally(() => {
       if (this.historyRetry?.promise === promise) this.historyRetry = undefined;
     });
@@ -10063,6 +10072,7 @@ class MainController {
     isRapidPolling = false,
     forceRefresh = false,
     bypassCompletedCache = false,
+    retainHistoryStatus = false,
   }: {
     activeNetwork: INetwork;
     bypassCompletedCache?: boolean;
@@ -10070,6 +10080,7 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
     isRapidPolling?: boolean;
+    retainHistoryStatus?: boolean;
   }) {
     if (this.clearingActivity) return;
     if (isPolling && !isRapidPolling && !isBitcoinBased)
@@ -10145,14 +10156,20 @@ class MainController {
             scope,
             requestId,
             ...(hasMore !== undefined && { explorerHasMore: hasMore }),
-            // A routine poll does not invalidate an already verified empty
-            // view. An explicit retry after an error remains visibly pending.
+            ...(!isBitcoinBased && {
+              checkedAt:
+                state === 'pending'
+                  ? sameScope
+                    ? status.checkedAt
+                    : undefined
+                  : Date.now(),
+            }),
+            // Passive reads keep the current presentation until they settle.
             state:
               state === 'pending' &&
-              isPolling &&
-              status?.state === 'ready' &&
-              sameScope
-                ? 'ready'
+              sameScope &&
+              (retainHistoryStatus || (isPolling && status.state === 'ready'))
+                ? status.state
                 : state,
           })
         );

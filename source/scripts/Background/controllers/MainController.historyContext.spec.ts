@@ -85,6 +85,7 @@ const deferred = () => {
   return { promise, resolve };
 };
 const flushExecutor = () => new Promise((resolve) => setImmediate(resolve));
+const historyClock = 10_000;
 const expectOnlyHistoryStatus = (
   scope: ReturnType<typeof getWalletNavigationScope>,
   states: Array<'pending' | 'ready' | undefined>
@@ -92,7 +93,14 @@ const expectOnlyHistoryStatus = (
   expect(mockDispatch.mock.calls.map(([action]) => action)).toEqual(
     states.map((state) =>
       setTransactionHistoryStatus(
-        state === undefined ? undefined : { scope, requestId: 1, state }
+        state === undefined
+          ? undefined
+          : {
+              scope,
+              requestId: 1,
+              state,
+              checkedAt: state === 'ready' ? historyClock : undefined,
+            }
       )
     )
   );
@@ -100,7 +108,7 @@ const expectOnlyHistoryStatus = (
 beforeEach(() => {
   jest.clearAllMocks();
   // Existing block 10 is the enrollment baseline; block 11 arrives afterward.
-  jest.spyOn(Date, 'now').mockReturnValue(10000);
+  jest.spyOn(Date, 'now').mockReturnValue(historyClock);
   const initial = vaultReducer(undefined, { type: 'test/init' });
   mockStore = configureStore({
     reducer: { vault: vaultReducer, vaultGlobal: vaultGlobalReducer },

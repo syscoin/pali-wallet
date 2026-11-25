@@ -265,11 +265,14 @@ function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024)
   ): Promise<T> {
     check(external);
     let network: ReturnType<typeof getNativeNetwork>;
+    let canonicalResponseUrl: string;
     let holder: string;
     try {
       network =
         scope?.network ??
         getNativeNetwork(networkId, options.registrations?.());
+      // Fetch may serialize an origin-only endpoint with a root slash.
+      canonicalResponseUrl = new URL(network.rpcUrl).href;
       holder = normalizePublicAddress(address, networkId);
     } catch {
       return fail('INVALID_INPUT');
@@ -323,7 +326,9 @@ function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024)
             assertCurrent();
             if (
               response.redirected ||
-              (response.url && response.url !== network.rpcUrl)
+              (response.url &&
+                response.url !== url &&
+                response.url !== canonicalResponseUrl)
             )
               return fail('WRONG_CHAIN');
             const contentType = response.headers.get('content-type');

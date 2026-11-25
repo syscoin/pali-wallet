@@ -658,9 +658,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
     // Try to fetch from external API first (more efficient)
     if (activeNetwork?.apiUrl) {
-      console.log(
-        `[pollingEvmTransactions] Attempting to fetch from API for ${currentAccount.address}`
-      );
       const apiResult = await fetchTransactionsFromAPI(
         currentAccount.address,
         currentNetworkChainId,
@@ -673,9 +670,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       check();
 
       if (apiResult.transactions !== null) {
-        console.log(
-          `[pollingEvmTransactions] Found ${apiResult.transactions.length} transactions from API`
-        );
         rawTransactions = apiResult.transactions;
         apiSucceeded = true;
         explorerHasMore = apiResult.hasMore;
@@ -712,27 +706,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       const currentBalance =
         currentAccount.balances?.[INetworkType.Ethereum] || '0';
       const hasBalance = hasPositiveBalance(currentBalance);
-      // Determine how many blocks to scan:
-      // - New account with no balance: 10 blocks (just recent activity)
-      // - Account with balance but no tx history: 20 blocks (they got funds somehow)
-      // - Account with tx history: 30 blocks (normal scanning)
-      let blocksToScan = 30;
-
-      if (!hasTransactionHistory && !hasBalance) {
-        blocksToScan = 10; // Minimal scanning for truly empty accounts
-        console.log(
-          `[pollingEvmTransactions] Empty account detected, scanning only last ${blocksToScan} blocks`
-        );
-      } else if (!hasTransactionHistory && hasBalance) {
-        blocksToScan = 20; // Medium scanning - they have funds but we haven't found the tx yet
-        console.log(
-          `[pollingEvmTransactions] Account has balance but no tx history, scanning last ${blocksToScan} blocks`
-        );
-      } else {
-        console.log(
-          `[pollingEvmTransactions] Account has transaction history, scanning last ${blocksToScan} blocks`
-        );
-      }
+      const blocksToScan = hasTransactionHistory ? 30 : hasBalance ? 20 : 10;
       rawTransactions = [];
       // Skip expensive block scanning during rapid polling
       if (isPolling && !isRapidPolling) {
@@ -761,10 +735,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         );
 
         if (pendingTxs.length > 0) {
-          console.log(
-            `[pollingEvmTransactions] Checking ${pendingTxs.length} pending transactions`
-          );
-
           // Shared lookups across all pending transactions: one block-height
           // call and one getBlock per unique block instead of per tx. Both
           // are lazy so nothing fires when every tx is still pending.
@@ -882,9 +852,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
           // Merge the individually fetched pending transactions with the block scan results
           if (validUpdatedTxs.length > 0) {
-            console.log(
-              `[pollingEvmTransactions] Found ${validUpdatedTxs.length} updated pending transactions`
-            );
             rawTransactions = [
               ...rawTransactions,
               ...(validUpdatedTxs as unknown as IEvmTransactionResponse[]),

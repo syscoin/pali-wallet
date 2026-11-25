@@ -130,7 +130,7 @@ const transaction = {
 };
 let originalFetch: typeof fetch;
 let manager: ReturnType<typeof TransactionsManager>;
-let mode: 'empty' | 'failed';
+let mode: 'empty' | 'failed' | 'unavailable';
 let explorerRows: (typeof transaction)[];
 let reads: string[];
 let provider: any;
@@ -314,7 +314,11 @@ beforeEach(() => {
     const responseMode = mode;
     await hold;
     return response(
-      responseMode === 'failed' ? 500 : 200,
+      responseMode === 'failed'
+        ? 500
+        : responseMode === 'unavailable'
+        ? 503
+        : 200,
       action === 'txlist' ? explorerRows : []
     );
   });
@@ -337,6 +341,49 @@ it('qualifies NFT and internal-transfer coverage after healthy configured explor
   expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
   expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
   expect(currentRows()).toEqual([]);
+});
+
+it('discovers external activity on a visible stale view without duplicating fresh reads', async () => {
+  await fetchInitial();
+  const visibility = jest
+    .spyOn(document, 'visibilityState', 'get')
+    .mockReturnValue('visible');
+  await renderAfterSettleTime();
+  expect(reads).toHaveLength(3);
+
+  explorerRows = [transaction];
+  visibility.mockReturnValue('hidden');
+  await act(async () => jest.advanceTimersByTimeAsync(15_000));
+  expect(reads).toHaveLength(3);
+
+  visibility.mockReturnValue('visible');
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await jest.advanceTimersByTimeAsync(1);
+  });
+  expect(reads).toHaveLength(6);
+  expect(screen.getByText(HASH)).toBeVisible();
+
+  cleanup();
+  await act(async () => jest.advanceTimersByTimeAsync(15_000));
+  expect(reads).toHaveLength(6);
+});
+
+it('recovers after a transient visible history failure while retaining indexed rows', async () => {
+  explorerRows = [transaction];
+  await fetchInitial();
+  await renderAfterSettleTime();
+
+  mode = 'unavailable';
+  await act(async () => jest.advanceTimersByTimeAsync(25_000));
+  expect(screen.getByText(HASH)).toBeVisible();
+  expect(screen.getByText('send.unableToLoad')).toBeVisible();
+
+  mode = 'empty';
+  await act(async () => jest.advanceTimersByTimeAsync(15_000));
+  expect(screen.getByText(HASH)).toBeVisible();
+  expect(screen.queryByText('send.unableToLoad')).toBeNull();
 });
 
 it('keeps failed configured EVM history visibly retryable instead of claiming empty', async () => {
