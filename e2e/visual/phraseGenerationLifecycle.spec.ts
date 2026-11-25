@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { createHash } from 'crypto';
+import { Mnemonic } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -321,4 +322,104 @@ test.use({ trace: 'off' });
       }
     }
   });
+});
+
+test('the packaged worker preserves BIP39 entropy and refuses an unavailable random source', async () => {
+  const server = await startUtxoFixtureServer();
+  let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
+  try {
+    wallet = await PaliWallet.launch('phrase-generation-entropy', {
+      offlineHttpProxy: server.url,
+      recordVideo: false,
+    });
+    const { page, context, extensionId } = wallet;
+    await expect(page.locator('#unlock-btn')).toBeVisible();
+    const worker = context
+      .serviceWorkers()
+      .find((entry) => new URL(entry.url()).host === extensionId);
+    if (!worker) throw new Error('Packaged extension worker is unavailable');
+
+    // Compare inside the extension page so even an unexpected random phrase
+    // cannot enter screenshots, traces, assertion messages or test reports.
+    const requestPhrase = (wordCount: number, expected?: string) =>
+      page.evaluate(
+        async ({ count, expectedPhrase }) => {
+          const reply = await chrome.runtime.sendMessage({
+            type: 'CONTROLLER_ACTION',
+            data: { methods: ['wallet', 'createNewSeed'], params: [count] },
+          });
+          return {
+            matches: typeof reply === 'string' && reply === expectedPhrase,
+            refused:
+              reply?.success === false && typeof reply.error === 'string',
+          };
+        },
+        { count: wordCount, expectedPhrase: expected }
+      );
+
+    const setEntropySource = (fixture: number[] | 'throwing' | 'missing') =>
+      worker.evaluateHandle((source) => {
+        const lengths: number[] = [];
+        const fill = (view: Uint8Array) => {
+          lengths.push(view.byteLength);
+          if (!Array.isArray(source))
+            throw new Error('Test entropy unavailable');
+          view.set(source);
+          return view;
+        };
+        Object.defineProperty(crypto, 'getRandomValues', {
+          configurable: true,
+          value: source === 'missing' ? undefined : fill,
+        });
+        return lengths;
+      }, fixture);
+
+    for (const count of [12, 24]) {
+      const byteLength = count === 12 ? 16 : 32;
+      await wallet.step(
+        `preserve each input byte for a ${count}-word phrase`,
+        async () => {
+          for (const offset of [0, 1]) {
+            const bytes = Array.from(
+              { length: byteLength },
+              (_, i) => (17 * i + offset) & 255
+            );
+            const draws = await setEntropySource(bytes);
+            // Ethers independently encodes every byte and the checksum; the
+            // packaged controller uses bitcoinjs/bip39 to produce its result.
+            const expected = Mnemonic.fromEntropy(
+              Uint8Array.from(bytes)
+            ).phrase;
+            expect(await requestPhrase(count, expected)).toEqual({
+              matches: true,
+              refused: false,
+            });
+            expect(await draws.jsonValue()).toEqual([byteLength]);
+            await draws.dispose();
+          }
+        }
+      );
+      await wallet.step(
+        `refuse a ${count}-word phrase if worker entropy fails`,
+        async () => {
+          for (const mode of ['throwing', 'missing'] as const) {
+            const draws = await setEntropySource(mode);
+            expect((await requestPhrase(count)).refused).toBe(true);
+            expect(await draws.jsonValue()).toEqual(
+              mode === 'throwing' ? [byteLength] : []
+            );
+            await draws.dispose();
+          }
+        }
+      );
+    }
+    status = 'passed';
+  } finally {
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      await server.close();
+    }
+  }
 });

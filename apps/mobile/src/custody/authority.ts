@@ -1,4 +1,5 @@
 import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy.ts';
+import { isGeneratedPhraseWordCount, type GeneratedPhraseWordCount } from '../../../../source/shared/recoveryPhrase.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import type { SecurityPreferences, SecurityPreferenceSnapshot } from '../core/securityPreferences.ts';
 import type { PublicViewLock } from '../core/publicViewLock.ts';
@@ -548,8 +549,9 @@ export class NativeCustodyAuthority {
     this.revoking = false;
   }
 
-  create(): Promise<void> {
-    return this.authenticate('create');
+  create(wordCount: GeneratedPhraseWordCount = 12): Promise<void> {
+    if (!isGeneratedPhraseWordCount(wordCount)) return Promise.reject(new CustodyOperationError('INVALID_INPUT'));
+    return this.authenticate({ kind: 'create', wordCount });
   }
 
   async previewPhrase(phrase: string, assertCurrent: () => void) {
@@ -566,12 +568,13 @@ export class NativeCustodyAuthority {
   }
 
   importPhrase(phrase: string): Promise<void> {
-    return this.authenticate('import', phrase);
+    if (typeof phrase !== 'string' || !phrase || phrase.length > 4096) return Promise.reject(new CustodyOperationError('INVALID_INPUT'));
+    return this.authenticate({ kind: 'import', phrase });
   }
 
   unlock(): Promise<void> {
     if (this.getSnapshot().phase === 'ready') return Promise.resolve();
-    return this.authenticate('unlock');
+    return this.authenticate({ kind: 'unlock' });
   }
 
   isAuthenticating(): boolean {
@@ -660,9 +663,12 @@ export class NativeCustodyAuthority {
     })();
   }
 
-  private authenticate(operation: 'create' | 'import' | 'unlock', phrase?: string): Promise<void> {
-    const creating = operation !== 'unlock';
-    if (operation === 'import' && (typeof phrase !== 'string' || !phrase || phrase.length > 4096)) return Promise.reject(new CustodyOperationError('INVALID_INPUT'));
+  private authenticate(operation:
+    | { kind: 'create'; wordCount: GeneratedPhraseWordCount }
+    | { kind: 'import'; phrase: string }
+    | { kind: 'unlock' }
+  ): Promise<void> {
+    const creating = operation.kind !== 'unlock';
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     try { this.checkIdle(); } catch (error) { return Promise.reject(error); }
     if (!this.runtime || this.snapshot.phase !== (creating ? 'empty' : 'locked')) return Promise.reject(new CustodyOperationError('NOT_READY'));
@@ -679,8 +685,8 @@ export class NativeCustodyAuthority {
     return (async () => {
       try {
         await this.drainLocks(); check(); attempted = true;
-        if (operation === 'create') await runtime.session.createWallet();
-        else if (operation === 'import') await runtime.session.importWallet(phrase!);
+        if (operation.kind === 'create') await runtime.session.createWallet(operation.wordCount);
+        else if (operation.kind === 'import') await runtime.session.importWallet(operation.phrase);
         else if (!(await runtime.session.unlock()).authenticated) throw new CustodyOperationError('UNAVAILABLE');
         operationSucceeded = true; check(); await this.readState(true); check();
         if (creating && this.snapshot.backup !== 'unconfirmed') {

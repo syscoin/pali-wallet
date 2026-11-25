@@ -69,6 +69,7 @@ const FIELDS = new Set([
   'fullSlh',
   'fullSlhDiagnostic',
   'mnemonicEntropyVerified',
+  'mnemonicWordCount',
   'storageDiagnostic',
   'nativeHdAccountsVerified',
   'nativeHdKeyRevealVerified',
@@ -155,6 +156,8 @@ function decodeNativeReport(
     typeof report !== 'object' ||
     Array.isArray(report) ||
     Object.keys(report).some((key) => !FIELDS.has(key)) ||
+    (report.mnemonicWordCount !== undefined &&
+      (platform !== 'android' || scenario !== 'generate' || report.status !== 'passed' || ![12, 24].includes(report.mnemonicWordCount))) ||
     !isHdQualificationReport(report) ||
     !isErc20QualificationReport(report) ||
     !isNevmQualificationReport(report) ||

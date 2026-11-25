@@ -405,6 +405,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   const configurations: { enabled: boolean; signal: AbortSignal; authentication: NativePrivateAuthenticationScope }[] = [];
   let biometricsEnabled = deviceUnlock && (setting?.enabled ?? !empty);
   const backupAcknowledgements: string[] = [];
+  const creationWordCounts: number[] = [];
   const authentication = new DeviceUnlockPrompt({
     state: () => root.native.AppState.currentState,
     subscribe(listener) {
@@ -451,7 +452,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
       async getAuthenticationStatus() { return { deviceAuth: 'ready', credentialPresent }; },
       async getDeviceUnlockStatus() { return { available: deviceUnlock, enabled: biometricsEnabled }; },
-      async create() {
+      async create(wordCount: number) {
+        creationWordCounts.push(wordCount);
         if (setupOperation) await setupOperation();
         else publish({ phase: 'ready', presence: 'existing', backup: 'unconfirmed' });
       },
@@ -647,7 +649,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, noteRestore, notificationRoutes,
+  return { render, unlock, publish, noteRestore, notificationRoutes, creationWordCounts,
     setShellImmersive(value: boolean) { shellImmersive = value; },
     setConnectionState(patch: Partial<typeof connectionState>) { connectionState = { ...connectionState, ...patch }; connectionObservers.forEach(listener => listener()); },
     notificationNavigationBlocked: () => notificationNavigationBlocked?.(), notificationNavigationChanges: () => notificationNavigationChanges,
@@ -973,15 +975,27 @@ for (const backup of ['confirmed', 'unconfirmed'] as const) test(`missing device
   } finally { f.dispose(); }
 });
 
-test('wallet creation uses explicit device protection without offering a Pali PIN', async () => {
+for (const wordCount of [12, 24] as const) test(`wallet creation submits ${wordCount} words with device protection`, async () => {
   const f = await walletFeedbackFixture(false, true);
   try {
-    press(row(f.render(), 'Create a wallet')); const tree = f.render();
+    press(row(f.render(), 'Create a wallet')); let tree = f.render();
     assert.match(text(tree), /Protected by your phone/);
     assert.match(text(tree), /device’s biometrics or passcode/);
     assert.equal(all(tree).some(node => node.type === 'PinSetup' || node.type === 'PinEntryScreen'), false);
+    const selector = all(tree).find(node => node.type === 'SegmentedControl');
+    assert(selector);
+    assert.equal(selector.props.label, 'Recovery phrase length');
+    assert.equal(selector.props.value, 12);
+    const options = selector.props.options as { value: number; label: string }[];
+    assert.deepEqual(Array.from(options, option => option.label), ['12 words', '24 words']);
+    if (wordCount === 24) {
+      (selector.props.onChange as (value: number) => void)(24);
+      tree = f.render();
+      assert.equal(all(tree).find(node => node.type === 'SegmentedControl')?.props.value, 24);
+    }
     assert.equal(button(tree, 'Create wallet').props.disabled, false);
     press(button(tree, 'Create wallet')); await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.creationWordCounts, [wordCount]);
     assert(!all(f.render()).some(node => node.type === 'PinSetup'));
   } finally { f.dispose(); }
 });

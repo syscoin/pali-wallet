@@ -38,6 +38,25 @@ test('a new phrase cannot inherit selected words or callbacks from the old phras
   f.close(); oldWord.props.onPress(); assert.equal(f.confirmed.length, 0);
 });
 
+test('a 24-word backup requires the last word and confirms the complete phrase in order', () => {
+  const f = fixture();
+  const words = [...Array<string>(23).fill('abandon'), 'art'];
+  try {
+    let tree = f.render({ presentation: { id: 'long-backup', words } });
+    assert.equal(tree.filter(value => value.type === 'Slot').length, 24);
+    for (const [index, word] of words.entries()) {
+      assert.equal(action(tree, 'Confirm backup').props.disabled, true);
+      action(tree, word, index).props.onPress();
+      tree = f.render();
+    }
+    const confirm = action(tree, 'Confirm backup');
+    assert.equal(confirm.props.disabled, false);
+    confirm.props.onPress();
+    assert.equal(f.confirmed.length, 1);
+    assert.deepEqual(Array.from(f.confirmed[0]!), words);
+  } finally { f.close(); }
+});
+
 test('selected slot labels expose the chosen word and position while removal is a separate hint', () => {
   const f = fixture(); let tree = f.render();
   action(tree, 'two', 1).props.onPress(); tree = f.render();

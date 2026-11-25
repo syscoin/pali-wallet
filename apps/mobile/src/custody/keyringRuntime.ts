@@ -1,7 +1,7 @@
 import { createBoundedRpcFetch } from './boundedRpcFetch.ts';
 import { createSmartAccountInfrastructureReader } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
 import { createRpcReadCapabilitiesOwner } from '../../../../source/shared/rpcReadCapabilities.ts';
-import { isRecoveryPhraseWordCount } from '../../../../source/shared/recoveryPhrase.ts';
+import { isGeneratedPhraseWordCount, isRecoveryPhraseWordCount, type GeneratedPhraseWordCount } from '../../../../source/shared/recoveryPhrase.ts';
 import { buildSmartAccountBuiltinInstall, assertSmartAccountBuiltinInstallApplied, type SmartAccountAuthenticatorPurpose } from '../../../../source/utils/smartAccount/moduleCommands.ts';
 import { isAccountCompatibleWithNetwork } from '../../../../source/utils/accountCompatibility.ts';
 import type { PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
@@ -7469,10 +7469,11 @@ export function createKeyringRuntimeFactory(
             },
           },
           session: {
-            createWallet: () => run(async (captured) => {
+            createWallet: (wordCount: GeneratedPhraseWordCount = 12) => run(async (captured) => {
               current(captured);
-              const phrase = keyring.createNewSeed(12);
-              if (typeof phrase !== 'string' || !keyring.isSeedValid(phrase)) throw new Error('UNAVAILABLE');
+              if (!isGeneratedPhraseWordCount(wordCount)) throw new KeyringRuntimeError('INVALID_INPUT');
+              const phrase = keyring.createNewSeed(wordCount);
+              if (typeof phrase !== 'string' || phrase.split(' ').length !== wordCount || !keyring.isSeedValid(phrase)) throw new Error('UNAVAILABLE');
               await createStoredWallet(phrase, captured);
             }),
             importWallet: (phrase) => run(async (captured) => {

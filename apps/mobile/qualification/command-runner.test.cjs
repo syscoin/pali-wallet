@@ -265,18 +265,36 @@ function reportWaitFixture() {
   const end = source.indexOf('const databaseEvidence =', start);
   let now = 0;
   const saved = [];
+  const files = [];
   const { waitReport: wait, validateReport: validate } = runInNewContext(source.slice(start, end) + '\n({ waitReport, validateReport });', {
     fullSlhEnabled: false, fullSlhConfiguration: null,
     decodeNativeReport, assertFullNativeReport, simulatorVersion: undefined,
     isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
-    fs: { writeFileSync(_file, text) { saved.push(JSON.parse(text)); } }, path: { join: () => 'unused' }, output: 'unused',
+    fs: { writeFileSync(file, text) { files.push(file); saved.push(JSON.parse(text)); } }, path: require('node:path'), output: 'fixtures',
     Date: { now: () => now }, sleep: async (milliseconds) => { now += milliseconds; },
   });
   const report = JSON.stringify({ version: 1, status: 'passed', authorizationMode: 'test-only-fixture', phase: 'create', scenario: 'import', platform: 'android',
     networkCalls: 0, nativeBridgeExercised: true, sdkVersion: expectedQualificationSdkVersion, ...cryptoCheckEvidence(), nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
     fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence(), ...importedEvidence() });
-  return { wait, validate, saved, report, now: () => now };
+  return { wait, validate, saved, files, report, now: () => now };
 }
+
+test('Android generated-wallet reports bind the distinct artifacts to the verified word count', async () => {
+  const { report, wait, validate, files } = reportWaitFixture();
+  const create = { ...JSON.parse(report), scenario: 'generate', mnemonicEntropyVerified: true };
+  const restart = { ...create, phase: 'restart', mnemonicEntropyVerified: false, ...erc20Evidence('restart'), ...nevmEvidence('restart'), ...zksysEvidence('restart'), ...importedEvidence('restart') };
+  for (const phase of [create, restart]) {
+    for (const expected of [12, 24]) {
+      const serialize = words => JSON.stringify({ ...phase, mnemonicWordCount: words });
+      await wait(() => serialize(expected), phase.phase, 'generate', undefined, undefined, expected);
+      assert.equal(files.at(-1), require('node:path').join('fixtures', 'android-generate' + (expected === 24 ? '-24' : '') + '-' + phase.phase + '.json'));
+      const before = files.length;
+      for (const wrong of [undefined, expected === 12 ? 24 : 12, 15])
+        assert.throws(() => validate(serialize(wrong), phase.phase, 'generate', expected));
+      assert.equal(files.length, before);
+    }
+  }
+});
 
 test('the actual report parser preserves producer storage evidence and rejects unknown or inconsistent payloads before writing', () => {
   const { createStorageQualificationDiagnostic } = require('./storage-diagnostics.ts');
@@ -490,7 +508,12 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
       fs: { readdirSync: () => ['35.0.0'], writeFileSync() {}, readFileSync: () => Buffer.from('public APK fixture') },
       prepareAndroidRoot: require('./native-readiness.cjs').prepareAndroidRoot,
       path: require('node:path'), run, platform: 'android', PACKAGE: 'com.paliwallet.qualification', artifact: '/public.apk', output: '/public-output',
-      waitPhaseReport: async (_read, requestedPhase, scenario) => ({ ...(requestedPhase === 'create' ? created : restored), scenario }),
+      waitPhaseReport: async (_read, requestedPhase, scenario, _startup, _isRunning, wordCount) => {
+        const lastLaunch = calls.findLast(call => call.includes('start'));
+        const uri = lastLaunch[lastLaunch.indexOf('-d') + 1];
+        assert.equal(uri.includes('wordCount=24'), wordCount === 24);
+        return { ...(requestedPhase === 'create' ? created : restored), scenario, mnemonicWordCount: wordCount };
+      },
       androidProcessRunning: () => true,
       databaseEvidence: (bytes) => { assert.equal(bytes.length, 4096); return { plaintextHeader: false }; },
       matchesHdRestartEvidence, matchesErc20RestartEvidence, matchesNevmRestartEvidence, matchesZksysRestartEvidence, matchesHdKeyRevealRestartEvidence, matchesImportedRestartEvidence,
@@ -503,7 +526,9 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
     return android();
   };
   const result = await exercise();
-  assert.equal(result.reports.length, 2);
+  assert.deepEqual(Array.from(result.reports, item => [item.scenario, item.mnemonicWordCount]), [
+    ['import', undefined], ['generate', 12], ['generate', 24],
+  ]);
   assert(result.reports.every((report) => report.hdAccountsRestored && report.signedTransferRestored && report.erc20TransferRestored && report.nevmTransferRestored && report.zksysTransferRestored));
   await assert.rejects(exercise({ erc20TransferHash: '0x' + 'f'.repeat(64) }), /Cold restart identity/);
   await assert.rejects(exercise({ nevmTransferHash: '0x' + 'f'.repeat(64) }), /Cold restart identity/);

@@ -1,4 +1,5 @@
 import type { EvmNetworkId } from './networkContext.ts';
+import type { GeneratedPhraseWordCount } from '../../../../source/shared/recoveryPhrase.ts';
 import type { NativeNetworkRuntime, NativeAccountRuntime } from './accounts.ts';
 import type { NativeImportRuntime } from './importedAccounts.ts';
 import type { NativePrivateAuthentication } from './privateAuthentication.ts';
@@ -75,7 +76,7 @@ export interface CustodyRuntime {
     reauthenticateIdlePolicy(signal: AbortSignal, authentication: NativePrivateAuthentication, assertCurrent: () => void): Promise<void>;
   };
   readonly session: {
-    createWallet(): Promise<void>;
+    createWallet(wordCount?: GeneratedPhraseWordCount): Promise<void>;
     importWallet(phrase: string): Promise<void>;
     /** Only the SDK's explicit credential rejection maps to false. */
     unlock(): Promise<Readonly<{ authenticated: boolean }>>;

@@ -582,6 +582,68 @@ test('native qualification fails before storage or SDK loading', async () => {
   assert.equal(opened, false); assert.equal(loaded, false);
 });
 
+for (const wordCount of [12, 24] as const) {
+  test(`a new ${wordCount}-word wallet can confirm its full backup and restore the same account`, async () => {
+    const disk = memoryDisk();
+    disk.denyNetwork();
+    let runtime!: KeyringRuntime;
+    const original = new NativeCustodyAuthority({
+      async open() {
+        runtime = await disk.factory.open() as KeyringRuntime;
+        return runtime;
+      },
+    });
+    const restored = new NativeCustodyAuthority(memoryDisk().factory);
+    const backup = new SeedBackupFlow(original, () => runtime.backup);
+    try {
+      await original.initialize();
+      await original.create(wordCount === 12 ? undefined : wordCount);
+      const address = original.getSnapshot().account?.address;
+      assert.ok(address);
+      const presentation = await backup.begin({ method: 'device' });
+      assert.equal(presentation.words.length, wordCount);
+      await assert.rejects(backup.confirm(presentation.id, presentation.words.slice(0, -1)), /BACKUP_WORDS_MISMATCH/);
+      assert.equal(original.getSnapshot().backup, 'unconfirmed');
+      await backup.confirm(presentation.id, presentation.words);
+      assert.equal(original.getSnapshot().backup, 'confirmed');
+
+      await restored.initialize();
+      await restored.importPhrase(presentation.words.join(' '));
+      assert.equal(restored.getSnapshot().account?.address, address);
+    } finally {
+      backup.dispose();
+      await restored.dispose();
+      await original.dispose();
+      disk.restoreNetwork();
+    }
+  });
+}
+
+test('creation refuses invalid word counts or a shorter SDK phrase before persisting a wallet', async () => {
+  const sdk = await loadNativeKeyringSdk();
+  let generationCalls = 0;
+  class ShortPhraseKeyring extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
+      super(...options);
+      this.createNewSeed = () => {
+        generationCalls++;
+        return PHRASE;
+      };
+    }
+  }
+  const disk = memoryDisk(async () => ({ ...sdk, HostKeyring: ShortPhraseKeyring }));
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  try {
+    await assert.rejects(runtime.session.createWallet(256 as 24), /INVALID_INPUT/);
+    assert.equal(generationCalls, 0);
+    await assert.rejects(runtime.session.createWallet(24));
+    assert.equal(generationCalls, 1);
+    assert.deepEqual(await runtime.storage.readState(), { presence: 'empty', backup: 'unconfirmed' });
+  } finally {
+    await runtime.storage.close();
+  }
+});
+
 test('backup uses fresh SDK authentication and a wallet-bound storage receipt', async () => {
   const disk = memoryDisk();
   const runtime = await disk.factory.open() as KeyringRuntime;

@@ -59,6 +59,7 @@ type LaunchParameters = {
   scenario: Scenario;
   address: string | null;
   physical?: never;
+  wordCount?: 12 | 24;
   http?: HttpLaunch;
   publicPool?: PublicPoolLaunch;
   privateProof?: Readonly<{ token: string }>;
@@ -146,6 +147,7 @@ function QualificationApp() {
       const mnemonicEntropy: Uint8Array[] = [];
       let observingGeneration = false;
       let mnemonicEntropyVerified = false;
+      let mnemonicWordCount: number | undefined;
       let expectedHdAddress: string | undefined;
       let expectedErc20Address: string | undefined;
       let expectedNevmAddress: string | undefined;
@@ -167,6 +169,8 @@ function QualificationApp() {
       };
       try {
         parameters = await launchParameters();
+        const requestedWordCount = 'wordCount' in parameters ? parameters.wordCount : undefined;
+        const expectedWordCount = requestedWordCount ?? 12;
         if ((parameters.physical?.scenario === 'full_slh') !== (parameters.physical !== undefined && fullSlhConfiguration !== undefined) ||
           fullSlhConfiguration !== undefined && ((parameters.physical ? parameters.scenario !== 'full_slh' : parameters.scenario !== 'import' || parameters.http || parameters.publicPool || parameters.privateProof) ||
           Constants.expoConfig?.extra?.paliPrivateProofQualification !== undefined || publicPoolConfiguration !== undefined || Constants.expoConfig?.extra?.paliHttpQualification !== undefined))
@@ -339,7 +343,7 @@ function QualificationApp() {
           getRandomValues<T extends ArrayBufferView>(array: T): T {
             const result = nativeCrypto.getRandomValues(array);
             if (result?.byteLength === 16) sentryBlindingCalls++;
-            if (observingGeneration && result?.byteLength === 16) {
+            if (observingGeneration && result?.byteLength === (expectedWordCount / 3) * 4) {
               if (mnemonicEntropy.length >= 32)
                 throw Error('QUALIFICATION_ENTROPY_BOUND');
               mnemonicEntropy.push(
@@ -595,7 +599,7 @@ function QualificationApp() {
             else {
               observingGeneration = true;
               try {
-                await authority!.create();
+                await authority!.create(requestedWordCount);
               } finally {
                 observingGeneration = false;
               }
@@ -604,7 +608,8 @@ function QualificationApp() {
           expect(authority.getSnapshot().phase === 'ready');
           await check('public-fixture authorized seed confirmation', async () => {
             const presentation = await backup!.begin({ method: 'device' });
-            expect(presentation.words.length === 12);
+            expect(presentation.words.length === expectedWordCount);
+            mnemonicWordCount = presentation.words.length;
             const { HDNodeWallet } = await import('ethers/wallet');
             expectedHdAddress = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/1").address;
             expectedErc20Address = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/2").address;
@@ -759,7 +764,8 @@ function QualificationApp() {
         if (parameters.phase === 'restart') {
           await check('seed reauthentication after cold restart', async () => {
             const presentation = await backup!.begin({ method: 'device' });
-            expect(presentation.words.length === 12);
+            expect(presentation.words.length === expectedWordCount);
+            mnemonicWordCount = presentation.words.length;
             if (parameters!.scenario !== 'generate')
               expect(presentation.words.join(' ') === PUBLIC_PHRASE);
             const { HDNodeWallet } = await import('ethers/wallet');
@@ -803,6 +809,7 @@ function QualificationApp() {
               : {}),
           },
           mnemonicEntropyVerified,
+          ...(Platform.OS === 'android' && parameters.scenario === 'generate' ? { mnemonicWordCount } : {}),
           nativeBridgeExercised: true,
           sdkVersion: verifiedSdkVersion,
           ...(fullSlh ? { fullSlh } : {}),

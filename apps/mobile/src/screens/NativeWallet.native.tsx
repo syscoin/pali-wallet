@@ -5,6 +5,7 @@ import type { NativePrivateAuthenticationScope } from '../custody/privateAuthent
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { NativeInfrastructure as NativeInfrastructureScreen } from './NativeInfrastructure';
 import { PALI_RECOVERY_ALERTS_URL } from '../../../../source/shared/smartAccountLinks.ts';
+import { GENERATED_PHRASE_WORD_COUNTS, type GeneratedPhraseWordCount } from '../../../../source/shared/recoveryPhrase';
 import { getNativeGuardianRecoveryChoices } from '../smartAccount/guardianRecovery';
 import { NativeNoteMaintenance } from './NativeNoteMaintenance';
 import { NativePrivacyControls } from './NativePrivacyControls';
@@ -50,7 +51,7 @@ import { ensurePrivacyShield } from '../platform/privacyShield.native';
 import type { CustodySnapshot } from '../custody/types';
 import type { SeedBackupPresentation } from '../custody/seedBackup';
 import { NativeSeedPhraseCopy } from './NativeSeedPhraseCopy';
-import { Button, Card, colors, Header, Icon, Notice, PaliMark, Row, Screen, styles, Text } from '../ui';
+import { Button, Card, colors, Header, Icon, Notice, PaliMark, Row, Screen, SegmentedControl, styles, Text } from '../ui';
 import { type NativeReceiveContinuation } from './NativePortfolio';
 import { NativePortfolioRoute, type NativeAccountDetail } from './NativeAccountOverview';
 import { AccountPortfolioController } from '../portfolio/accountPortfolio';
@@ -335,6 +336,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const closePrivateLeaf = useCallback(() => setStage('private-notes'), []);
   const [authenticationStatus, setAuthenticationStatus] = useState<'ready' | 'missing' | 'unsupported' | null>(null);
   const [credentialPresent, setCredentialPresent] = useState<boolean | null>(null);
+  const [creationWordCount, setCreationWordCount] = useState<GeneratedPhraseWordCount>(12);
   const [phrase, setPhrase] = useState('');
   const [presentation, setPresentation] = useState<SeedBackupPresentation | null>(null);
   const backupCopyOwner = useRef<{ local: Controllers; epoch: number; presentation: SeedBackupPresentation } | null>(null);
@@ -1663,7 +1665,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const enteredPhrase = phrase, importing = stage === 'import-security';
     void perform(async local => {
       if (importing) await local.authority.importPhrase(enteredPhrase);
-      else await local.authority.create();
+      else await local.authority.create(creationWordCount);
       clearSecrets();
       if (local.authority.getSnapshot().phase === 'ready') setStage('choose');
     });
@@ -1784,7 +1786,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       <Header title={t("mobile.walletViews.setUpYourWallet")} onBack={exit} />
       <Text style={styles.muted}>{t("mobile.walletViews.createAWalletOrBringOneYouAlreadyUse")}</Text>
       <Card>
-        <Row title={t("mobile.walletViews.createAWallet")} subtitle={t("mobile.walletViews.startWithANewRecoveryPhrase")} icon="plus" onPress={() => setStage('create')} />
+        <Row title={t("mobile.walletViews.createAWallet")} subtitle={t("mobile.walletViews.startWithANewRecoveryPhrase")} icon="plus" onPress={() => { setCreationWordCount(12); setStage('create'); }} />
         <Row title={t("mobile.walletViews.importExistingWallet")} subtitle={t("mobile.walletViews.useYourRecoveryPhrase")} icon="key" onPress={() => setStage('import')} last={!accounts} />
         {accounts && <Row title={t("mobile.welcome.watch")} subtitle={t("mobile.walletViews.followAnAddressWithoutItsPrivateKeys")} icon="eye" onPress={() => setStage('accounts')} last />}
       </Card>
@@ -1800,6 +1802,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
           <Text style={{ fontSize: 28, lineHeight: 36, fontWeight: '600', textAlign: 'center' }}>{t("mobile.walletViews.yourWalletProtectedByYourPhone")}</Text>
           <Text style={[styles.muted, { textAlign: 'center', fontSize: 16, lineHeight: 24 }]}>{t("mobile.walletViews.useYourDeviceSBiometricsOrPasscodeToApproveTransactionsAndAccessPrivateInformation")}</Text>
         </View>
+        {stage === 'create' && <View style={{ gap: 8 }}>
+          <Text>{t('mobile.recoveryDevices.recovery.recoveryPhraseLength')}</Text>
+          <SegmentedControl<GeneratedPhraseWordCount> label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={creationWordCount}
+            options={GENERATED_PHRASE_WORD_COUNTS.map(count => ({ value: count, label: t('mobile.recoveryDevices.common.wordCount', { count }) }))}
+            disabled={busy} onChange={setCreationWordCount} />
+        </View>}
         {authenticationStatus === 'unsupported' && <Notice title={t("mobile.walletViews.deviceAuthenticationUnavailable")} body={t("mobile.walletViews.thisDeviceDoesNotSupportTheSecureAuthenticationRequiredForASigningWalletYouCanStillWatchAnAccount")} tone="amber" />}
         {authenticationStatus === 'missing' && <Notice title={t("mobile.walletViews.setUpYourDevicePasscode")} body={t("mobile.walletViews.enableAScreenLockInYourPhoneSSettingsThenReturnToPali")} tone="amber" />}
         {error && <Notice title={t("mobile.walletViews.walletSetupWasNotCompleted")} body={error} tone="amber" />}

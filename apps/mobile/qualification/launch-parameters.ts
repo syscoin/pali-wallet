@@ -14,6 +14,7 @@ export function parseQualificationLaunch(raw: unknown): {
   phase: QualificationPhase;
   scenario: QualificationScenario;
   address: string | null;
+  wordCount?: 12 | 24;
   http?: HttpLaunch;
   publicPool?: PublicPoolLaunch;
   privateProof?: Readonly<{ token: string }>;
@@ -26,10 +27,12 @@ export function parseQualificationLaunch(raw: unknown): {
   const phase = url.searchParams.get('phase');
   const scenario = url.searchParams.get('scenario');
   const address = url.searchParams.get('address');
+  const wordCount = url.searchParams.get('wordCount');
   if (url.protocol !== 'pali-wallet-qualification:' || url.hostname !== 'run' ||
     !['', '/'].includes(url.pathname) || url.username || url.password || url.port || url.hash ||
-    keys.some((key) => !['phase', 'scenario', 'address', 'httpPort', 'httpToken', 'proofToken', ...poolKeys].includes(key)) || new Set(keys).size !== keys.length ||
+    keys.some((key) => !['phase', 'scenario', 'address', 'wordCount', 'httpPort', 'httpToken', 'proofToken', ...poolKeys].includes(key)) || new Set(keys).size !== keys.length ||
     !['create', 'restart'].includes(phase ?? '') || !['import', 'generate'].includes(scenario ?? '') ||
+    (wordCount !== null && (scenario !== 'generate' || (wordCount !== '12' && wordCount !== '24'))) ||
     (phase === 'create' ? address !== null : typeof address !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(address)))
     throw Error('QUALIFICATION_LINK_INVALID');
   const http = url.searchParams.has('httpPort') || url.searchParams.has('httpToken')
@@ -41,5 +44,7 @@ export function parseQualificationLaunch(raw: unknown): {
   const proofToken = url.searchParams.get('proofToken');
   if (proofToken !== null && (!/^[0-9a-f]{32}$/.test(proofToken) || http || pool || phase !== 'create' || scenario !== 'import'))
     throw Error('QUALIFICATION_LINK_INVALID');
-  return { phase: phase as QualificationPhase, scenario: scenario as QualificationScenario, address, ...(http ? { http } : {}), ...(publicPool ? { publicPool } : {}), ...(proofToken ? { privateProof: Object.freeze({ token: proofToken }) } : {}) };
+  return { phase: phase as QualificationPhase, scenario: scenario as QualificationScenario, address,
+    ...(wordCount !== null ? { wordCount: wordCount === '24' ? 24 as const : 12 as const } : {}),
+    ...(http ? { http } : {}), ...(publicPool ? { publicPool } : {}), ...(proofToken ? { privateProof: Object.freeze({ token: proofToken }) } : {}) };
 }

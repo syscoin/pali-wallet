@@ -20,6 +20,18 @@ test('untrusted launch arguments cannot select an alternate route, credential, o
     assert.throws(() => parseQualificationLaunch(value), /QUALIFICATION_LINK_INVALID/);
 });
 
+test('only isolated generate launches can select a recovery phrase length', () => {
+  const generate = 'pali-wallet-qualification://run?phase=create&scenario=generate';
+  for (const phase of ['create', 'restart']) {
+    const launch = phase === 'create' ? generate : generate.replace('phase=create', 'phase=restart') + '&address=0x' + '11'.repeat(20);
+    for (const words of [12, 24])
+      assert.equal(parseQualificationLaunch(launch + '&wordCount=' + words).wordCount, words);
+  }
+  assert.throws(() => parseQualificationLaunch(generate.replace('generate', 'import') + '&wordCount=24'));
+  for (const value of ['', '024', '13', '256', '24&wordCount=12'])
+    assert.throws(() => parseQualificationLaunch(generate + '&wordCount=' + value));
+});
+
 test('HTTP companion accepts only a paired fixed-loopback port and fresh token', () => {
   const base = 'pali-wallet-qualification://run?phase=create&scenario=import';
   assert.deepEqual(parseQualificationLaunch(`${base}&httpPort=45454&httpToken=${'a'.repeat(32)}`).http,

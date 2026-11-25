@@ -116,10 +116,12 @@ async function captureHttpDiagnostic() {
     }
   } catch { /* Partial diagnostics never replace the original failure. */ }
 }
-const validateReport = (text, phase, scenario) => {
+const validateReport = (text, phase, scenario, wordCount) => {
   const report = decodeNativeReport(text, platform, phase, scenario, simulatorContract, simulatorVersion);
+  if (report.status === 'passed' && wordCount !== undefined && report.mnemonicWordCount !== wordCount)
+    throw Error('Native backup word count did not match the requested length');
   fs.writeFileSync(
-    path.join(output, `${platform}-${scenario}-${phase}.json`),
+    path.join(output, `${platform}-${scenario}${wordCount === 24 ? '-24' : ''}-${phase}.json`),
     simulatorContract ? text : `${JSON.stringify(report, null, 2)}\n`
   );
   if (!simulatorContract) assertFullNativeReport(report);
@@ -143,7 +145,7 @@ const captureFixtureLoadError = (text, scenario, stage = 'quick-crypto-load') =>
     return false;
   }
 };
-const waitReport = async (read, phase, scenario, readStartup, isRunning) => {
+const waitReport = async (read, phase, scenario, readStartup, isRunning, wordCount) => {
   const startedAt = Date.now();
   const deadline = startedAt + 300000;
   const readAvailable = () => {
@@ -153,7 +155,7 @@ const waitReport = async (read, phase, scenario, readStartup, isRunning) => {
       throw Error('Unexpected successful startup-failure report');
     }
     const text = read();
-    return text ? validateReport(text, phase, scenario) : undefined;
+    return text ? validateReport(text, phase, scenario, wordCount) : undefined;
   };
   while (Date.now() < deadline) {
     const report = readAvailable();
@@ -578,7 +580,11 @@ async function android() {
     httpCompanion = await startHttpCompanion({ walletConnectIdentity: require('../scripts/qualification-sdk.cjs').readWalletConnectSdkIdentity(path.join(__dirname, '..')), platform, sourceRevision: process.env.GITHUB_SHA, run });
   }
   const reports = [];
-  for (const scenario of (fullSlhEnabled ? ['import'] : ['import', 'generate'])) {
+  const cases = fullSlhEnabled ? [{ scenario: 'import' }] :
+    [{ scenario: 'import' }, { scenario: 'generate', wordCount: 12 }, { scenario: 'generate', wordCount: 24 }];
+  for (const { scenario, wordCount } of cases) {
+    const label = wordCount === 24 ? 'generate-24' : scenario;
+    const wordQuery = wordCount === 24 ? '&wordCount=24' : '';
     run('adb', ['uninstall', PACKAGE], true); // Dedicated test package only.
     try {
       run('adb', ['install', artifact]);
@@ -608,14 +614,14 @@ async function android() {
           `${PACKAGE}/.MainActivity`,
         ]);
         fs.writeFileSync(
-          path.join(output, `android-${scenario}-${phase}-launch.log`),
+          path.join(output, `android-${label}-${phase}-launch.log`),
           redact(result).slice(-4096)
         );
         return result;
       };
       const httpCreate = httpCompanion ? await httpCompanion.begin('create', scenario) : '';
       launch(
-        `pali-wallet-qualification://run?phase=create&scenario=${scenario}${httpCreate}`,
+        `pali-wallet-qualification://run?phase=create&scenario=${scenario}${wordQuery}${httpCreate}`,
         'create'
       );
       const created = await waitPhaseReport(
@@ -623,12 +629,13 @@ async function android() {
         'create',
         scenario,
         () => read('startup'),
-        androidProcessRunning
+        androidProcessRunning,
+        wordCount
       );
       if (httpCompanion) {
         const { post, ...evidence } = await httpCompanion.verify(httpRead, created.sessionId);
-        fs.writeFileSync(path.join(output, `android-${scenario}-create-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
-        fs.writeFileSync(path.join(output, `android-${scenario}-create-post.json`), `${JSON.stringify(post, null, 2)}\n`);
+        fs.writeFileSync(path.join(output, `android-${label}-create-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+        fs.writeFileSync(path.join(output, `android-${label}-create-post.json`), `${JSON.stringify(post, null, 2)}\n`);
       }
       const oldPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
       run('adb', ['shell', 'am', 'force-stop', PACKAGE]);
@@ -647,7 +654,7 @@ async function android() {
       const database = databaseEvidence(captured);
       const httpRestart = httpCompanion ? await httpCompanion.begin('restart', scenario) : '';
       launch(
-        `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}${httpRestart}`,
+        `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}${wordQuery}${httpRestart}`,
         'restart'
       );
       const restored = await waitPhaseReport(
@@ -655,12 +662,13 @@ async function android() {
         'restart',
         scenario,
         () => read('startup'),
-        androidProcessRunning
+        androidProcessRunning,
+        wordCount
       );
       if (httpCompanion) {
         const { post, ...evidence } = await httpCompanion.verify(httpRead, restored.sessionId);
-        fs.writeFileSync(path.join(output, `android-${scenario}-restart-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
-        fs.writeFileSync(path.join(output, `android-${scenario}-restart-post.json`), `${JSON.stringify(post, null, 2)}\n`);
+        fs.writeFileSync(path.join(output, `android-${label}-restart-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+        fs.writeFileSync(path.join(output, `android-${label}-restart-post.json`), `${JSON.stringify(post, null, 2)}\n`);
       }
       const newPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
       if (
@@ -685,7 +693,7 @@ async function android() {
         );
         if (screenshot)
           fs.writeFileSync(
-            path.join(output, `android-${scenario}-restart.png`),
+            path.join(output, `android-${label}-restart.png`),
             screenshot
           );
       } catch {
@@ -693,6 +701,7 @@ async function android() {
       }
       reports.push({
         scenario,
+        ...(wordCount ? { mnemonicWordCount: created.mnemonicWordCount } : {}),
         database,
         processRestartVerified: true,
         sessionChanged: true,
@@ -831,7 +840,7 @@ async function android() {
           }
         }
         fs.writeFileSync(
-          path.join(output, `android-${scenario}-runtime-diagnostics.json`),
+          path.join(output, `android-${label}-runtime-diagnostics.json`),
           JSON.stringify(
             {
               processRunning: Boolean(processId),
@@ -860,7 +869,7 @@ async function android() {
         );
         if (screenshot)
           fs.writeFileSync(
-            path.join(output, `android-${scenario}-final.png`),
+            path.join(output, `android-${label}-final.png`),
             screenshot
           );
       } catch {

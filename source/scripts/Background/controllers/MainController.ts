@@ -117,6 +117,7 @@ import {
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
 import { getPrivacyPoolActivity } from '../../../shared/privacyPoolActivity';
 import { readPublicJson } from '../../../shared/publicMarketRead';
+import { isRecoveryPhraseWordCount } from '../../../shared/recoveryPhrase';
 import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import {
   filterSmartAccountNativeRecipientOperations,
@@ -3929,8 +3930,17 @@ class MainController {
     return this.getActiveKeyring().getActiveAccount();
   }
 
-  public createNewSeed(wordCount?: number) {
-    return this.getActiveKeyring().createNewSeed(wordCount);
+  public createNewSeed(wordCount = 12) {
+    if (!isRecoveryPhraseWordCount(wordCount)) {
+      throw new RangeError('Unsupported BIP39 word count');
+    }
+    const phrase = this.getActiveKeyring().createNewSeed(wordCount);
+    if (typeof phrase !== 'string' || phrase.split(' ').length !== wordCount) {
+      throw new Error(
+        'Generated phrase does not match the requested word count'
+      );
+    }
+    return phrase;
   }
 
   /**
