@@ -63,3 +63,5 @@ Configure Vercel as a project rooted at this directory.
 | Domain | `docs.paliwallet.com` |
 
 The docs app is intentionally isolated from the browser extension build. Do not point Vercel at the repository root for this project.
+
+Vercel redirects each localized homepage to its trailing slash URL before Docusaurus renders. For example, `/zh` goes to `/zh/`. Docusaurus strips the current locale's base URL (including its trailing slash) before generating `hreflang` URLs. Keep the locale list in the homepage redirect in `vercel.json` in sync with `docusaurus.config.js`.
