@@ -210,7 +210,7 @@ export function createNativeSmartOperation(
     ? selectedFees.type === 0 ? Object.freeze({ gasPrice: selectedFees.gasPrice })
       : Object.freeze({ maxFeePerGas: selectedFees.maxFeePerGas, maxPriorityFeePerGas: selectedFees.maxPriorityFeePerGas })
     : undefined;
-  const combinedFeeReview = ['native-transfer', 'native-max', 'erc20-transfer', 'nft-transfer', 'dapp-call', 'dapp-batch'].includes(intent.kind);
+  const combinedFeeReview = ['deploy', 'native-transfer', 'native-max', 'erc20-transfer', 'nft-transfer', 'dapp-call', 'dapp-batch'].includes(intent.kind);
   let issued: PreparedSmartAccountOperation | undefined;
   let payerBudget: SmartAccountPayerBudget & Readonly<{ address: string }> | undefined;
   let observedAt: SmartAccountAuthorizationBlock | undefined;
@@ -815,6 +815,7 @@ export function createNativeSmartOperation(
               return {
                 accountId: account.id,
                 gasPrice: prepared.gasPrice,
+                ...(payerBudget ? { useReviewedPayerFees: true as const } : {}),
                 expectedErc20Transfers: prepared.expectedErc20Transfers,
                 userOperation: prepared.userOperation,
                 ...(cancellation ? {cancellation,replaceOuter:Boolean(cancellationPayer?.replaceOuter)} : {}),

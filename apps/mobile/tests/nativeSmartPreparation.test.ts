@@ -74,10 +74,17 @@ function fixture(options: { passkey?: boolean; slh?: boolean; authentication?: b
       const prepared = { actionHash: hash, executions, userOperation: buildSmartAccountUserOperation({ sender: smart, nonce: '0', callData: '0x',
         accountGasLimits: encodeSmartAccountGasLimits({ callGasLimit: 1, verificationGasLimit: 1 }), gasFees: encodeSmartAccountGasFees({ maxFeePerGas: 2, maxPriorityFeePerGas: 1 }), preVerificationGas: '1' }) } as PreparedSmartAccountOperation;
       return new NativeSmartAccountOperation({ account: smart, network: getNativeNetwork('ethereum'), authorizationExpiresAt: handoff.expiresAt, intent, assertCurrent: guard, background() {},
-        async prepare() { guard(); return intent.kind === 'authenticator' && exact ? { kind: 'already-configured' } : { kind: 'authorization', intent, operation: prepared }; },
+        async prepare() {
+          guard();
+          if (intent.kind === 'authenticator' && exact) return { kind: 'already-configured' };
+          const payerBudget = intent.kind === 'deploy'
+            ? { address: local, gasTank: false, maximumFeeWei: '2', maximumPrefundWei: '0', maximumPrefundFeeWei: '0' }
+            : undefined;
+          return { kind: 'authorization', intent, operation: prepared, payerBudget };
+        },
         async sign(_prepared, _guard, signal) { if (options.authentication) { assert(authentication); await privateAuthentication.withNativePrivateAuthentication(authentication, signal, guard, async proof => { promptActive = true; try { await credentialWait; assert(!proof.aborted); guard(); } finally { promptActive = false; } }); } guard(); handoff.beforeSignature(); signatures++; if (failSignature) throw Error('Uncertain signing outcome'); return '0xsigned'; },
         async submit(_prepared, _signature, _signal, check, reviewPayer, broadcast) {
-          await reviewPayer({ purpose: 'submit-operation', transaction: { from: local, to: smart, nonce: '0', value: '0', data: '0x', gasLimit: '1', type: 2, chainId: '1', accessList: [], maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, maximumFeeUnits: '2', maximumTotalUnits: '2', coveredFeeUnits: '0' }, check);
+          if (intent.kind === 'authenticator') await reviewPayer({ purpose: 'submit-operation', transaction: { from: local, to: smart, nonce: '0', value: '0', data: '0x', gasLimit: '1', type: 2, chainId: '1', accessList: [], maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, maximumFeeUnits: '2', maximumTotalUnits: '2', coveredFeeUnits: '0' }, check);
           check(); submissions++; if (intent.kind === 'deploy') deployed = true; else exact = true; broadcast(hash, 'submit-operation'); return hash;
         },
         async refreshMetadata(_signal, check) { metadataReads++; await metadataWait; check(); if (failMetadata) throw Error('Canonical adoption not observed'); },
@@ -107,10 +114,18 @@ function fixture(options: { passkey?: boolean; slh?: boolean; authentication?: b
     holdAllocation(wait: Promise<void>) { allocationWait = wait; }, holdAfterCommit(wait: Promise<void>) { afterCommitWait = wait; }, holdPreparation(wait: Promise<void>) { preparationWait = wait; }, holdMetadata(wait: Promise<void>) { metadataWait = wait; }, holdConnect(wait: Promise<void>) { connectWait = wait; },
     revoke() { live = false; manager.revalidate(); }, revokeSession() { session = false; manager.revalidate(); }, selectOther() { selected = 'other'; manager.revalidate(); } };
 }
+async function approveDeployment(f: ReturnType<typeof fixture>) {
+  const review = f.review();
+  assert.equal(review.operation?.intent.kind, 'deploy');
+  assert(review.operation?.payerBudget);
+  assert.equal(f.counts().signatures, 0);
+  await f.manager.approve(review.id, true);
+}
 async function authorizeAndPay(f: ReturnType<typeof fixture>) {
   const id = f.review().id, work = f.manager.approve(id, true); await tick();
   const review = f.review(); assert(review.operation?.payerReview, JSON.stringify(review));
-  assert.equal(f.counts().submissions, review.operation.intent.kind === 'deploy' ? 0 : 1);
+  assert.equal(review.operation.intent.kind, 'authenticator');
+  assert.equal(f.counts().submissions, 1);
   f.manager.confirmPayer(id, review.operation.payerReview.id); await work;
 }
 
@@ -131,7 +146,7 @@ test('configured ECDSA reuses one allocation through deployment, authenticator a
     await assert.rejects(f.manager.approve(f.review().id, false), /acknowledgement/); assert.equal(f.counts().allocations, 0);
     await f.manager.approve(f.review().id, true); assert.equal(f.review().operation?.intent.kind, 'deploy');
     assert.deepEqual(f.externalAssents, [true]); assert.equal(f.counts().signatures, 0);
-    await authorizeAndPay(f); assert.equal(f.review().operation?.intent.kind, 'authenticator'); assert.equal(f.counts().allocations, 1); assert.equal(f.responses.length, 0);
+    await approveDeployment(f); assert.equal(f.review().operation?.intent.kind, 'authenticator'); assert.equal(f.counts().allocations, 1); assert.equal(f.responses.length, 0);
     await authorizeAndPay(f); assert.deepEqual(f.responses, [{ result: { address: smart, chainId: '0x1', installedValidator: validator } }]);
     assert.deepEqual(f.counts(), { allocations: 1, preparations: 2, signatures: 2, submissions: 2, metadataReads: 1, savedAccounts: 1 });
   } finally { await f.manager.dispose(); }
@@ -149,7 +164,7 @@ test('wallet-acquired P256 creation keeps separate deployment and authenticator 
     assert.equal(f.review().requestedAuthenticatorId, 'p256-webauthn');
     await f.manager.approve(f.review().id, false);
     assert.equal(f.review().operation?.intent.kind, 'deploy');
-    await authorizeAndPay(f);
+    await approveDeployment(f);
     assert.equal(f.review().operation?.intent.kind, 'authenticator');
     assert.equal(f.responses.length, 0);
     await authorizeAndPay(f);
@@ -164,7 +179,7 @@ test('wallet-prepared SLH creation keeps deployment, installation and payer appr
     assert.equal(f.review().requestedAuthenticatorId, 'slh-dsa'); assert.equal(f.counts().allocations, 0);
     await f.manager.approve(f.review().id, false);
     assert.equal(f.review().operation?.intent.kind, 'deploy'); assert.equal(f.counts().signatures, 0);
-    await authorizeAndPay(f);
+    await approveDeployment(f);
     assert.equal(f.review().operation?.intent.kind, 'authenticator'); assert.equal(f.responses.length, 0);
     await authorizeAndPay(f);
     assert.equal(f.counts().allocations, 1); assert.equal(f.counts().signatures, 2); assert.equal(f.counts().submissions, 2);
@@ -248,7 +263,7 @@ test('a canonical read failure after proven deployment retries configuration on 
   const f = fixture({ configured: true, external: true }); f.enqueue();
   try {
     await f.manager.approve(f.review().id, true); f.failPrepare();
-    await assert.rejects(authorizeAndPay(f), /canonical read/); assert(f.review().canRetry);
+    await assert.rejects(approveDeployment(f), /canonical read/); assert(f.review().canRetry);
     assert.equal(f.counts().signatures, 1); assert.equal(f.counts().submissions, 1);
     await f.manager.approve(f.review().id, false); assert.equal(f.review().operation?.intent.kind, 'authenticator');
     await authorizeAndPay(f); assert.equal(f.counts().allocations, 1); assert.equal(f.counts().signatures, 2); assert.equal(f.counts().submissions, 2); assert.equal(f.responses.length, 1);
@@ -405,8 +420,8 @@ test('Smart preparation request keeps one prompt owner across allocation and sel
     assert.equal(f.manager.isRequestAuthenticating(id), false);
     f.holdCredential(signing.promise); const authorizing = f.manager.approve(id, false); await tick();
     assert.equal(f.manager.isRequestAuthenticating(id), true, 'same request remains bound after its admitted account selection');
-    signing.resolve(); await tick();
-    const payer = f.review().operation!.payerReview; assert(payer); f.manager.confirmPayer(id, payer.id); await authorizing;
+    signing.resolve(); await authorizing;
+    assert.equal(f.review().operation?.intent.kind, 'authenticator');
     assert.equal(f.manager.isRequestAuthenticating(id), false);
     assert(!JSON.stringify(f.review()).includes('authentication'));
   } finally { allocation.resolve(); signing.resolve(); await f.manager.dispose(); }

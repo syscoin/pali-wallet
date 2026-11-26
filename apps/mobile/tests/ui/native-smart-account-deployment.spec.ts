@@ -11,17 +11,7 @@ const cases = [
   {
     phase: 'authorize',
     heading: 'Authorize deployment',
-    action: 'Authorize deployment',
-  },
-  {
-    phase: 'fund-account',
-    heading: 'Fund smart account',
-    action: 'Confirm funding',
-  },
-  {
-    phase: 'submit-deployment',
-    heading: 'Deploy smart account',
-    action: 'Confirm deployment',
+    action: 'Deploy smart account',
   },
   {
     phase: 'waiting',
@@ -107,7 +97,7 @@ for (const width of [390, 320]) {
         ).toBeVisible();
         await expect(
           page.getByRole('button', {
-            name: /^(Authorize deployment|Confirm funding|Confirm deployment)$/,
+            name: /^(Deploy smart account|Confirm funding|Confirm deployment)$/,
           })
         ).toHaveCount(0);
       }
@@ -150,21 +140,9 @@ test('each meaningful authorization invokes the exact current action once', asyn
   const revision = await page.evaluate(() =>
     window.__nativeSmartAccountDeploymentFixture.revision()
   );
-  await page
-    .getByRole('button', { name: 'Authorize deployment', exact: true })
-    .click();
-  await expect(
-    page.getByRole('heading', { name: 'Fund smart account', exact: true })
-  ).toBeVisible();
-  await page
-    .getByRole('button', { name: 'Confirm funding', exact: true })
-    .click();
-  await expect(
-    page.getByRole('button', { name: 'Confirm deployment', exact: true })
-  ).toBeEnabled();
-  await page
-    .getByRole('button', { name: 'Confirm deployment', exact: true })
-    .click();
+  await expect(page.getByText('Fee payer', { exact: true })).toBeVisible();
+  await expect(page.getByText('0x2222222222222222222222222222222222222222', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Deploy smart account', exact: true }).click();
   await expect(
     page.getByText('Waiting for the network…', { exact: true })
   ).toBeVisible();
@@ -175,8 +153,6 @@ test('each meaningful authorization invokes the exact current action once', asyn
   ).toEqual([
     { method: 'prepare' },
     { method: 'authorize', value: revision },
-    { method: 'confirmPayer', value: 8 },
-    { method: 'confirmPayer', value: 9 },
   ]);
 });
 
@@ -222,7 +198,7 @@ test('long authorization details remain complete and actions stay reachable on a
   ).toHaveCount(1);
   await expectContained(page);
   const authorize = page.getByRole('button', {
-    name: 'Authorize deployment',
+    name: 'Deploy smart account',
     exact: true,
   });
   await authorize.scrollIntoViewIfNeeded();
@@ -252,26 +228,8 @@ test('long authorization details remain complete and actions stay reachable on a
     page.getByText('Account creation data', { exact: true })
   ).toHaveCount(0);
   await authorize.click();
-  await expect(
-    page.getByRole('button', { name: 'Confirm funding', exact: true })
-  ).toBeEnabled();
+  await expect(page.getByText('Waiting for the network…', { exact: true })).toBeVisible();
   await expectContained(page);
-  await page.getByRole('heading').scrollIntoViewIfNeeded();
-  await expectFullyInViewport(page.getByRole('heading'));
-  await page.screenshot({
-    path: test.info().outputPath('deployment-long-funding-320.png'),
-  });
-  await page
-    .getByRole('button', { name: 'Confirm funding', exact: true })
-    .scrollIntoViewIfNeeded();
-  await close.scrollIntoViewIfNeeded();
-  await expectFullyInViewport(close);
-  await expectFullyInViewport(
-    page.getByRole('button', { name: 'Confirm funding', exact: true })
-  );
-  await page.screenshot({
-    path: test.info().outputPath('deployment-long-funding-320-actions.png'),
-  });
 });
 
 test('Back leaves the deployment screen', async ({ page }) => {

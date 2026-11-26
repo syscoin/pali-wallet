@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConfirmationModal } from 'components/index';
+import { SmartAccountPayerFee } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { formatEther } from 'utils/ethersV6Compat';
 import type {
   SmartAccountExecutionFeeConsent,
@@ -36,6 +37,10 @@ type EntryPointReview = Readonly<{
   entryPoint: true;
   id: string;
   maximumFeeUnits: string;
+  payer?: {
+    address: string;
+    budget: NonNullable<SmartAccountFeeQuote['payerBudget']>;
+  };
   validForMs: number;
 }>;
 type PendingReview = FeeReviewDetails & {
@@ -174,6 +179,12 @@ export function useSmartAccountFeeConfirmation(scope: string) {
       return present(
         {
           entryPoint: true,
+          ...(quote.payerBudget && {
+            payer: {
+              address: quote.feePayer.address,
+              budget: quote.payerBudget,
+            },
+          }),
           id: quote.executionContextId,
           maximumFeeUnits: quote.maximumFeeWei,
           validForMs: 60_000,
@@ -226,12 +237,13 @@ export function useSmartAccountFeeConfirmation(scope: string) {
         {row(t('settings.smartAccountFeeReviewSelectedAccount'), shown.account)}
         {shown.smartAccount &&
           row(t('smartAccountHub.accountAddress'), shown.smartAccount)}
-        {row(
-          t('transactions.feePayer'),
-          'transaction' in shown.quote
-            ? shown.quote.transaction.from
-            : shown.smartAccount ?? shown.account
-        )}
+        {(!('entryPoint' in shown.quote) || !shown.quote.payer) &&
+          row(
+            t('transactions.feePayer'),
+            'transaction' in shown.quote
+              ? shown.quote.transaction.from
+              : shown.smartAccount ?? shown.account
+          )}
         {'transaction' in shown.quote &&
           row(
             t('send.to'),
@@ -258,9 +270,16 @@ export function useSmartAccountFeeConfirmation(scope: string) {
             `${formatEther(shown.quote.maximumTotalUnits)} ${gasSymbol}`
           )}
       </dl>
+      {'entryPoint' in shown.quote && shown.quote.payer && (
+        <SmartAccountPayerFee {...shown.quote.payer} currency={gasSymbol} />
+      )}
       {'entryPoint' in shown.quote && (
         <p className="mt-3 text-sm text-brand-graylight">
-          {t('send.smartAccountFeeDetails')}
+          {t(
+            shown.quote.payer?.budget.gasTank === false
+              ? 'send.smartAccountFeeReimbursement'
+              : 'send.smartAccountFeeDetails'
+          )}
         </p>
       )}
       {expired && (

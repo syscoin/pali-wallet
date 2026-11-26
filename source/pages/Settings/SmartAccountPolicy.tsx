@@ -11,6 +11,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../shared/smartAccountFeeQuote';
 import { PALI_RECOVERY_ALERTS_URL } from '../../shared/smartAccountLinks.ts';
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, ConfirmationModal, Icon } from 'components/index';
@@ -55,6 +56,7 @@ import {
   getGuardianRecoveryDelayOptions,
   isGuardianRecoveryDelayAllowed,
   SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
+  prepareSmartAccountFeeQuote,
   signAndSubmitSmartAccountExecutions,
   signSmartAccountActionHash,
 } from 'utils/smartAccount';
@@ -63,6 +65,7 @@ import type {
   PaliSmartAccountAuthenticatorSetup,
   SmartAccountAuthenticatorBuildResult,
   SmartAccountGuardianRecoveryDigestContext,
+  SmartAccountFeeQuote,
 } from 'utils/smartAccount';
 import { buildGuardianPolicyExecutions } from 'utils/smartAccount/guardianPolicy';
 import { captureGuardianRecoveryClaim } from 'utils/smartAccount/guardianRecoveryClaim';
@@ -1425,6 +1428,7 @@ const SmartAccountPolicy = () => {
     executions: Array<{ data: string; target: string; value: string }>,
     options: {
       approval?: PolicyApprovalScope;
+      approvedFeeQuote?: SmartAccountFeeQuote;
       onBeforeSubmit?: () => void | Promise<void>;
       refreshAfterSubmit?: boolean;
       retrySignature?: boolean;
@@ -1449,14 +1453,17 @@ const SmartAccountPolicy = () => {
         controllerEmitter,
         executions,
         expectedContext: approval.expectedContext,
-        feeConsent: forExecution({
-          account: approval.expectedContext.account.address,
-          smartAccount: account.address,
-          chainId: activeNetwork.chainId,
-          symbol: activeNetwork.currency,
-          label: t('settings.smartAccountAccountPolicy'),
-          assertCurrent: approval.assertCurrent,
-        }),
+        approvedFeeQuote: options.approvedFeeQuote,
+        feeConsent: options.approvedFeeQuote
+          ? undefined
+          : forExecution({
+              account: approval.expectedContext.account.address,
+              smartAccount: account.address,
+              chainId: activeNetwork.chainId,
+              symbol: activeNetwork.currency,
+              label: t('settings.smartAccountAccountPolicy'),
+              assertCurrent: approval.assertCurrent,
+            }),
         onBeforeAuthentication: approval.assertCurrent,
         onPrepared: approval.assertCurrent,
         onBeforeSubmit: async () => {
@@ -1633,11 +1640,42 @@ const SmartAccountPolicy = () => {
     setLoading(true);
     try {
       const approval = await capturePolicyApproval();
-      if (!metadata.isDeployed)
-        await submitModuleExecutions(
-          [{ target: account.address, data: '0x', value: '0x0' }],
-          { approval, waitForConfirmation: true, refreshAfterSubmit: false }
-        );
+      if (!metadata.isDeployed) {
+        const executions = [
+          { target: account.address, data: '0x', value: '0x0' },
+        ];
+        const quote = await prepareSmartAccountFeeQuote({
+          accountAddress: account.address,
+          accountId: account.id,
+          controllerEmitter,
+          executions,
+          expectedContext: approval.expectedContext,
+          includePayerBudget: true,
+        });
+        if (!quote.executionContextId || !quote.payerBudget)
+          throw new Error('Invalid registration fee quote');
+        await assertApprovalSession(approval);
+        const accepted = await forExecution({
+          account: approval.expectedContext.account.address,
+          smartAccount: account.address,
+          chainId: activeNetwork.chainId,
+          symbol: activeNetwork.currency,
+          label: t('settings.registerSmartAccount'),
+          assertCurrent: approval.assertCurrent,
+        }).confirmEntryPoint({
+          ...quote,
+          executionContextId: quote.executionContextId,
+        });
+        if (accepted !== quote.executionContextId) return;
+        await assertApprovalSession(approval);
+        await submitModuleExecutions(executions, {
+          approval,
+          approvedFeeQuote: quote,
+          retrySignature: false,
+          waitForConfirmation: true,
+          refreshAfterSubmit: false,
+        });
+      }
       await refreshMetadata(approval, false).catch(() => null);
       if (isCurrentUi()) alert.success(t('settings.smartAccountRegistered'));
     } catch (error: any) {
@@ -1645,12 +1683,14 @@ const SmartAccountPolicy = () => {
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         alert.error(
-          getSmartAccountActionErrorMessage(
-            error,
-            t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas'),
-            t('settings.slhDsaLocalSignerMissing')
-          )
+          error?.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+            ? t('send.smartAccountPayerFeeExceeded')
+            : getSmartAccountActionErrorMessage(
+                error,
+                t('send.cantCompleteTxs'),
+                t('send.insufficientFundsForGas'),
+                t('settings.slhDsaLocalSignerMissing')
+              )
         );
       }
     } finally {

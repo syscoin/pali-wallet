@@ -53,6 +53,7 @@ import {
 } from './prepareOperation.ts';
 import { getSmartAccountUserOpHash } from './userOperationHash.ts';
 import type { EvmAutoNonceSnapshot } from '../../shared/evmAutoNonce.ts';
+import type { SmartAccountFeeOverrides } from '../../shared/smartAccountFeeQuote';
 import type {
   IKeyringAccountState,
   ISmartAccountMetadata,
@@ -123,6 +124,7 @@ export type SmartAccountSubmitHost<
       assertCurrentContext(): void;
       onAcknowledged(): void;
       onSubmissionAttempt(): void;
+      reviewedPayerFees?: SmartAccountFeeOverrides;
     }
   ): Promise<void>;
   getExecutionContext(id: string):
@@ -133,6 +135,7 @@ export type SmartAccountSubmitHost<
         feeDisplayBlock?: import('../../shared/evmDappPreparation.ts').EvmDappFeeDisplayBlock;
         gasPrice?: string;
         replaceOuter?: boolean;
+        useReviewedPayerFees?: true;
         userOperation: SmartAccountPackedUserOperation;
       }
     | undefined;
@@ -313,11 +316,25 @@ async function submitOwnedSmartAccountOperation<
       ...params.userOperation,
       signature: params.signature,
     };
-    const cancellationContext = host.getExecutionContext(
+    const executionContext = host.getExecutionContext(
       params.executionContextId
     );
-    const cancellation = cancellationContext?.cancellation;
-    const replaceOuter = cancellationContext?.replaceOuter === true;
+    // The reviewed prefund and handleOps budgets share this prepared fee rate.
+    const payerFees =
+      legacyGasPrice !== undefined
+        ? { gasPrice: legacyGasPrice }
+        : params.maxFeePerGas !== undefined &&
+          params.maxPriorityFeePerGas !== undefined
+        ? {
+            maxFeePerGas: params.maxFeePerGas,
+            maxPriorityFeePerGas: params.maxPriorityFeePerGas,
+          }
+        : executionContext?.useReviewedPayerFees &&
+          params.maxFeePerGas !== undefined
+        ? { gasPrice: params.maxFeePerGas }
+        : undefined;
+    const cancellation = executionContext?.cancellation;
+    const replaceOuter = executionContext?.replaceOuter === true;
     if (cancellation) {
       assertSmartAccountCancellationOperation(
         cancellation,
@@ -382,8 +399,8 @@ async function submitOwnedSmartAccountOperation<
       return pending;
     };
     const submissionChecks: SmartAccountSubmissionChecks = {
-      ...(cancellationContext?.feeDisplayBlock
-        ? { feeDisplayBlock: cancellationContext.feeDisplayBlock }
+      ...(executionContext?.feeDisplayBlock
+        ? { feeDisplayBlock: executionContext.feeDisplayBlock }
         : {}),
       assertPendingStateIncludesAssets: true,
       async prepareReadPhase(provider, hash, snapshot) {
@@ -487,6 +504,9 @@ async function submitOwnedSmartAccountOperation<
         active.metadata.chainId,
         {
           ...submissionChecks,
+          ...(executionContext?.useReviewedPayerFees
+            ? { reviewedPayerFees: payerFees }
+            : {}),
           assertBeforeSign: assertCurrent,
           assertCurrentContext: assertContext,
           onSubmissionAttempt() {
@@ -510,18 +530,11 @@ async function submitOwnedSmartAccountOperation<
         ...(replaceOuter && cancellation?.outer
           ? { nonce: cancellation.outer.nonce }
           : {}),
-        ...(legacyGasPrice !== undefined
-          ? { gasPrice: legacyGasPrice }
-          : params.maxFeePerGas && params.maxPriorityFeePerGas
-          ? {
-              maxFeePerGas: params.maxFeePerGas,
-              maxPriorityFeePerGas: params.maxPriorityFeePerGas,
-            }
-          : {}),
+        ...payerFees,
         to: entryPointAddress,
         value: '0x0',
       },
-      legacyGasPrice !== undefined,
+      payerFees?.gasPrice !== undefined,
       { id: gasPayer.id, type: gasPayer.type },
       {
         smartAccountExecution: true,

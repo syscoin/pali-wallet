@@ -295,7 +295,7 @@ export function NativeSmartAccountOperationContent({
   const customInstall = intent.kind === 'modules' && intent.command.draft.kind === 'install-custom';
   const riskAcknowledged = phase === 'authorize' && riskAcknowledgement?.intent === intent && riskAcknowledgement.hash === hash;
   const authorizeCurrent = () => {
-    if (disabled || !live.current || AppState.currentState !== 'active') return;
+    if (disabled || intent.kind === 'deploy' && !state.payerBudget || !live.current || AppState.currentState !== 'active') return;
     if (intent.kind !== 'modules') { authorize(false); return; }
     if (!reviewCurrent()) return;
     const acknowledged = risk.current?.intent === intent && risk.current.hash === hash;
@@ -322,7 +322,7 @@ export function NativeSmartAccountOperationContent({
       </View>
     );
   };
-  const payer = state.payerReview;
+  const payer = intent.kind === 'deploy' ? null : state.payerReview;
   const payerBudget = phase === 'authorize' ? state.payerBudget : undefined;
   const feeFact = (label: string, units: string) => (
     <View style={s.feeFact}>
@@ -374,7 +374,9 @@ export function NativeSmartAccountOperationContent({
   const primary = state.phase === 'authorize' ? (
             <Button
               title={
-                payerBudget
+                intent.kind === 'deploy'
+                  ? t('mobile.recoveryStatusViews.operation.deploySmartAccount')
+                  : payerBudget
                   ? t(batch ? 'mobile.recoveryStatusViews.operation.confirmCalls'
                     : transfer?.kind === 'dapp-call' ? 'mobile.recoveryStatusViews.operation.confirmTransaction'
                     : 'mobile.recoveryStatusViews.operation.confirmTransfer')
@@ -392,11 +394,9 @@ export function NativeSmartAccountOperationContent({
                   ? t('mobile.recoveryStatusViews.operation.authorizeCalls')
                   : transfer?.kind === 'dapp-call'
                   ? t('mobile.recoveryStatusViews.operation.authorizeTransaction')
-                  : transfer
-                  ? t('mobile.recoveryStatusViews.operation.authorizeTransfer')
-                  : t('mobile.recoveryStatusViews.operation.authorizeDeployment')
+                  : t('mobile.recoveryStatusViews.operation.authorizeTransfer')
               }
-              disabled={disabled || customInstall && !riskAcknowledged}
+              disabled={disabled || intent.kind === 'deploy' && !payerBudget || customInstall && !riskAcknowledged}
               onPress={authorizeCurrent}
             />
   ) : payer ? (
@@ -416,11 +416,9 @@ export function NativeSmartAccountOperationContent({
                     : t('mobile.recoveryStatusViews.operation.confirmPolicy')
                   : batch
                   ? t('mobile.recoveryStatusViews.operation.confirmCalls')
-                  : transfer
-                  ? transfer.kind === 'dapp-call'
-                    ? t('mobile.recoveryStatusViews.operation.confirmTransaction')
-                    : t('mobile.recoveryStatusViews.operation.confirmTransfer')
-                  : t('mobile.recoveryStatusViews.operation.confirmDeployment')
+                  : transfer?.kind === 'dapp-call'
+                  ? t('mobile.recoveryStatusViews.operation.confirmTransaction')
+                  : t('mobile.recoveryStatusViews.operation.confirmTransfer')
               }
               disabled={disabled}
               onPress={() => { if (live.current && AppState.currentState === 'active') confirmPayer(payer.id); }}
@@ -657,7 +655,7 @@ export function NativeSmartAccountOperationContent({
         )}
         {state.phase === 'authorize' && (
           <>
-            {!payerBudget && <Notice
+            {intent.kind !== 'deploy' && !payerBudget && <Notice
               title={
                 cancellation
                   ? t('transactions.smartAuthorizations.cancelInstruction')
@@ -671,11 +669,9 @@ export function NativeSmartAccountOperationContent({
                     : t('mobile.recoveryStatusViews.operation.authorizeThisGuardianPolicy')
                   : batch
                   ? t('mobile.recoveryStatusViews.operation.authorizeTheseCalls')
-                  : transfer
-                  ? transfer.kind === 'dapp-call'
-                    ? t('mobile.recoveryStatusViews.operation.authorizeThisTransaction')
-                    : t('mobile.recoveryStatusViews.operation.authorizeThisTransfer')
-                  : t('mobile.recoveryStatusViews.operation.createThisAccountOnTheNetwork')
+                  : transfer?.kind === 'dapp-call'
+                  ? t('mobile.recoveryStatusViews.operation.authorizeThisTransaction')
+                  : t('mobile.recoveryStatusViews.operation.authorizeThisTransfer')
               }
               body={
                 cancellation
@@ -694,11 +690,9 @@ export function NativeSmartAccountOperationContent({
                     : t('mobile.recoveryStatusViews.operation.authorizeTheGuardianAndRecoveryDelayShownAboveTheFollowing')
                   : batch
                   ? t('mobile.recoveryStatusViews.operation.authorizeTheOrderedCallsTogetherTheFollowingReviewConfirmsThe')
-                  : transfer
-                  ? transfer.kind === 'dapp-call'
-                    ? t('mobile.recoveryStatusViews.operation.authorizeThisSmartAccountTransactionTheFollowingReviewConfirmsThe')
-                    : t('mobile.recoveryStatusViews.operation.authorizeThisSmartAccountTransferTheFollowingReviewConfirmsThe')
-                  : t('mobile.recoveryStatusViews.operation.authorizeTheAccountsDeploymentThisOperationSendsNoAssetsThe')
+                  : transfer?.kind === 'dapp-call'
+                  ? t('mobile.recoveryStatusViews.operation.authorizeThisSmartAccountTransactionTheFollowingReviewConfirmsThe')
+                  : t('mobile.recoveryStatusViews.operation.authorizeThisSmartAccountTransferTheFollowingReviewConfirmsThe')
               }
             />}
             <Card style={[s.card, payerBudget && s.feeCard]}>
@@ -789,11 +783,9 @@ export function NativeSmartAccountOperationContent({
                     : t('mobile.recoveryStatusViews.operation.submitTheAuthorizedGuardianPolicy')
                   : batch
                   ? t('mobile.recoveryStatusViews.operation.submitTheAuthorizedCalls')
-                  : transfer
-                  ? transfer.kind === 'dapp-call'
-                    ? t('mobile.recoveryStatusViews.operation.submitTheAuthorizedTransaction')
-                    : t('mobile.recoveryStatusViews.operation.submitTheAuthorizedTransfer')
-                  : t('mobile.recoveryStatusViews.operation.submitTheAuthorizedDeployment')
+                  : transfer?.kind === 'dapp-call'
+                  ? t('mobile.recoveryStatusViews.operation.submitTheAuthorizedTransaction')
+                  : t('mobile.recoveryStatusViews.operation.submitTheAuthorizedTransfer')
               }
               body={
                 payer.purpose === 'fund-account'
@@ -810,11 +802,9 @@ export function NativeSmartAccountOperationContent({
                     : t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheGuardianPolicyYouAuthorized')
                   : batch
                   ? t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheCallsYouAuthorized')
-                  : transfer
-                  ? transfer.kind === 'dapp-call'
-                    ? t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheOperationYouAuthorized')
-                    : t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheTransferYouAuthorized')
-                  : t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsYourExistingDeploymentAuthorization')
+                  : transfer?.kind === 'dapp-call'
+                  ? t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheOperationYouAuthorized')
+                  : t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheTransferYouAuthorized')
               }
             />
             <Card style={s.card}>
