@@ -3823,7 +3823,9 @@ const SmartAccountPolicy = () => {
                     : t('settings.smartAccountCurrentApprovalMethod')}
                 </p>
                 <span className="shrink-0 rounded-full bg-brand-blue500 bg-opacity-20 px-2 py-1 text-[10px] font-semibold text-brand-blue100">
-                  {registrationNeedsReview
+                  {registrationNeedsReview &&
+                  registrationReview.message ===
+                    'send.smartAccountPendingReview'
                     ? t('transactions.unconfirmed')
                     : isUndeployedSmartAccount
                     ? t('settings.smartAccountInfrastructureNotReadyStatus')

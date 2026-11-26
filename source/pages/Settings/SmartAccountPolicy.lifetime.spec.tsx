@@ -1298,6 +1298,9 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         screen.getByRole('button', { name: 'settings.registerSmartAccount' })
       );
       expect(await screen.findByText(message)).toBeTruthy();
+      expect(Boolean(screen.queryByText('transactions.unconfirmed'))).toBe(
+        error === 'SMART_ACCOUNT_PENDING_STATE'
+      );
       expect(mockAlert.error).not.toHaveBeenCalled();
       expect(
         screen.queryByRole('button', { name: 'settings.registerSmartAccount' })
