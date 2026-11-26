@@ -65,7 +65,20 @@ jest.mock('components/TransactionOptions', () => ({
   TransactionOptions: () => null,
 }));
 jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
-  controllerEmitter: () => {
+  controllerEmitter: (path: string[], args: unknown[]) => {
+    if (
+      path.length === 2 &&
+      path[0] === 'wallet' &&
+      path[1] === 'refreshTransactionHistory'
+    ) {
+      // Pending RPC-only rows ask the worker to recheck. This fixture supplies
+      // the resulting history through Redux and never connects to a provider.
+      expect(args).toEqual([
+        jest.requireActual('utils/navigationState').getWalletNavigationScope(),
+        'visible',
+      ]);
+      return Promise.resolve();
+    }
     throw new Error(
       'Confirmation scope test must not query an external provider'
     );

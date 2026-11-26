@@ -120,7 +120,14 @@ const renderActivity = (
               ethereum: {
                 [chainId]: isBitcoinBased
                   ? []
-                  : [{ hash: `0x${'aa'.repeat(32)}` }],
+                  : [
+                      {
+                        hash: `0x${'aa'.repeat(32)}`,
+                        blockNumber: 42,
+                        blockHash: `0x${'bb'.repeat(32)}`,
+                        timestamp: 1700000000,
+                      },
+                    ],
               },
               syscoin: {
                 [chainId]: isBitcoinBased ? [{ txid: 'aa'.repeat(32) }] : [],
