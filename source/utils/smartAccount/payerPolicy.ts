@@ -226,6 +226,28 @@ export function createSmartAccountGasTankFunding(
   );
 }
 
+export type SmartAccountPrefundOptions = SmartAccountSubmissionChecks & {
+  assertBeforeSign(): void;
+  assertCurrentContext(): void;
+  onAcknowledged(): void;
+  onSubmissionAttempt(): void;
+  reconcileMinedTransaction?(hash: string): Promise<void>;
+  reviewedPayerFees?: SmartAccountFeeOverrides & { gasLimit?: string };
+};
+
+export async function waitForSmartAccountTransaction(
+  transaction: { hash: string; wait(): Promise<unknown> },
+  reconcile?: SmartAccountPrefundOptions['reconcileMinedTransaction']
+) {
+  try {
+    await transaction.wait();
+  } finally {
+    // A reverted receipt can also end the wait. A history read must not
+    // delay or change the outcome of the original send.
+    void reconcile?.(transaction.hash).catch(() => undefined);
+  }
+}
+
 export async function ensureSmartAccountDeploymentPrefund<
   TResponse extends { hash: string; wait(): Promise<unknown> }
 >(
@@ -236,13 +258,7 @@ export async function ensureSmartAccountDeploymentPrefund<
   entryPointAddress: string,
   gasPayer: { address: string; id: number; type: KeyringAccountType },
   chainId: number,
-  options: SmartAccountSubmissionChecks & {
-    assertBeforeSign: () => void;
-    assertCurrentContext: () => void;
-    onAcknowledged: () => void;
-    onSubmissionAttempt: () => void;
-    reviewedPayerFees?: SmartAccountFeeOverrides & { gasLimit?: string };
-  }
+  options: SmartAccountPrefundOptions
 ): Promise<void> {
   const assertCurrent = () => {
     assertSynchronousEvmFeeGuard(options.assertBeforeSign);
@@ -289,7 +305,10 @@ export async function ensureSmartAccountDeploymentPrefund<
       skipRapidPolling: true,
     }
   );
-  await response.wait();
+  await waitForSmartAccountTransaction(
+    response,
+    options.reconcileMinedTransaction
+  );
   assertCurrent();
 }
 

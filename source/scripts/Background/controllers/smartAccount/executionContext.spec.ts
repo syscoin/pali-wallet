@@ -1312,6 +1312,8 @@ describe('smart-account execution approval context', () => {
     'marks the real prefund sender boundary only when a topup is needed (already funded=%s)',
     async (alreadyFunded) => {
       const onSubmissionAttempt = jest.fn();
+      const fundingHash = `0x${'ef'.repeat(32)}`;
+      const reconcileMinedTransaction = jest.fn().mockResolvedValue(undefined);
       const wait = jest.fn().mockResolvedValue(undefined);
       provider.getBalance = jest
         .fn()
@@ -1321,7 +1323,7 @@ describe('smart-account execution approval context', () => {
       }));
       send.mockImplementation(async () => {
         expect(onSubmissionAttempt).toHaveBeenCalledTimes(1);
-        return { hash: HASH, wait };
+        return { hash: fundingHash, wait };
       });
       const userOperation = buildSmartAccountUserOperation({
         accountGasLimits: encodeSmartAccountGasLimits({
@@ -1348,12 +1350,16 @@ describe('smart-account execution approval context', () => {
           assertCurrentContext: () => undefined,
           onAcknowledged: () => undefined,
           onSubmissionAttempt,
+          reconcileMinedTransaction,
         },
         provider
       );
       expect(onSubmissionAttempt).toHaveBeenCalledTimes(alreadyFunded ? 0 : 1);
       expect(send).toHaveBeenCalledTimes(alreadyFunded ? 0 : 1);
       expect(wait).toHaveBeenCalledTimes(alreadyFunded ? 0 : 1);
+      expect(reconcileMinedTransaction.mock.calls).toEqual(
+        alreadyFunded ? [] : [[fundingHash]]
+      );
     }
   );
 
