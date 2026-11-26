@@ -2,6 +2,21 @@
   "cleanUrls": true,
   "redirects": [
     {
+      "source": "/:locale(de|es|fr|ja|ko|pt|ru|zh)/privacy",
+      "destination": "/privacy",
+      "permanent": true
+    },
+    {
+      "source": "/:locale(de|es|fr|ja|ko|pt|ru|zh)/privacy/",
+      "destination": "/privacy",
+      "permanent": true
+    },
+    {
+      "source": "/de/zh",
+      "destination": "/de/",
+      "permanent": true
+    },
+    {
       "source": "/guide/v2/Update_Pali",
       "destination": "/docs/users/upgrade-from-v1",
       "permanent": true
