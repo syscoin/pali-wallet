@@ -1064,42 +1064,71 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     ).toHaveLength(3);
   });
 
-  it('preserves UTXO and EVM transition metadata without repeating stable-chain events', async () => {
-    const { provider, connect } = await initialize();
-    const chainChanged = jest.fn();
-    provider.on('chainChanged', chainChanged);
-    connect.mockClear();
-    notify('pali_isBitcoinBased', { isBitcoinBased: true });
-    notify('pali_chainChanged', {
-      chainId: '0x39',
-      networkVersion: 57,
-      isBitcoinBased: true,
-    });
-    expect(provider.isBitcoinBased()).toBe(true);
-    expect(provider.networkVersion).toBe('57');
-    expect(chainChanged).not.toHaveBeenCalled();
-    notify('pali_accountsChanged', ['syscoin-utxo-address']);
-    expect(provider.accounts).toEqual([]);
-    expect(provider.selectedAddress).toBeNull();
+  it.each(['chain', 'kind', 'account'])(
+    'publishes empty EVM accounts once when the UTXO %s notification arrives first',
+    async (firstNotification) => {
+      const { provider, connect } = await initialize();
+      const chainChanged = jest.fn();
+      const accountsChanged = jest.fn();
+      provider.on('chainChanged', chainChanged);
+      provider.on('accountsChanged', (accounts) =>
+        accountsChanged(accounts, provider.accounts, provider.selectedAddress)
+      );
+      connect.mockClear();
+      backgroundIsBitcoinBased = true;
+      connectedChainId = '0x39';
+      connectedNetworkVersion = '57';
+      const kindFirst = firstNotification === 'kind';
+      if (kindFirst) notify('pali_isBitcoinBased', { isBitcoinBased: true });
+      if (firstNotification === 'account')
+        notify('pali_accountsChanged', ['syscoin-utxo-address']);
+      notify('pali_chainChanged', {
+        chainId: '0x39',
+        networkVersion: 57,
+        isBitcoinBased: true,
+      });
+      if (!kindFirst) notify('pali_isBitcoinBased', { isBitcoinBased: true });
+      expect(provider.isBitcoinBased()).toBe(true);
+      expect(provider.networkVersion).toBe('57');
+      expect(chainChanged).not.toHaveBeenCalled();
+      notify('pali_accountsChanged', ['syscoin-utxo-address']);
+      notify('pali_accountsChanged', [ADDRESS]);
+      expect(provider.accounts).toEqual([]);
+      expect(provider.selectedAddress).toBeNull();
+      expect(await provider.request({ method: 'eth_accounts' })).toEqual([]);
+      expect(accountsChanged.mock.calls).toEqual([[[], [], null]]);
 
-    notify('pali_isBitcoinBased', { isBitcoinBased: false });
-    notify('pali_chainChanged', {
-      chainId: '0x1',
-      networkVersion: 1,
-      isBitcoinBased: false,
-    });
-    expect(provider.isBitcoinBased()).toBe(false);
-    expect(provider.networkVersion).toBe('1');
-    expect(provider.chainId).toBe('0x1');
-    expect(chainChanged.mock.calls).toEqual([['0x1']]);
-    notify('pali_chainChanged', {
-      chainId: '0x1',
-      networkVersion: '1',
-      isBitcoinBased: false,
-    });
-    expect(chainChanged).toHaveBeenCalledTimes(1);
-    expect(connect).not.toHaveBeenCalled();
-  });
+      backgroundIsBitcoinBased = false;
+      connectedChainId = '0x1';
+      connectedNetworkVersion = '1';
+      if (kindFirst) notify('pali_isBitcoinBased', { isBitcoinBased: false });
+      notify('pali_chainChanged', {
+        chainId: '0x1',
+        networkVersion: 1,
+        isBitcoinBased: false,
+      });
+      if (!kindFirst) notify('pali_isBitcoinBased', { isBitcoinBased: false });
+      expect(provider.isBitcoinBased()).toBe(false);
+      expect(provider.networkVersion).toBe('1');
+      expect(provider.chainId).toBe('0x1');
+      expect(chainChanged.mock.calls).toEqual([['0x1']]);
+      notify('pali_chainChanged', {
+        chainId: '0x1',
+        networkVersion: '1',
+        isBitcoinBased: false,
+      });
+      expect(chainChanged).toHaveBeenCalledTimes(1);
+      expect(connect).not.toHaveBeenCalled();
+      notify('pali_accountsChanged', [ADDRESS]);
+      expect(await provider.request({ method: 'eth_accounts' })).toEqual([
+        ADDRESS,
+      ]);
+      expect(accountsChanged.mock.calls).toEqual([
+        [[], [], null],
+        [[ADDRESS], [ADDRESS], ADDRESS],
+      ]);
+    }
+  );
 
   it('applies an initial UTXO-to-EVM chain snapshot before the first account grant', async () => {
     approved = false;
