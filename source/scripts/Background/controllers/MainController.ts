@@ -10234,7 +10234,8 @@ class MainController {
                   `${session}:${networkRequest}`,
                   isCurrentRead,
                   bypassCompletedCache,
-                  historyAbort.signal
+                  historyAbort.signal,
+                  retainHistoryStatus && !activeNetwork.apiUrl
                 );
             } catch (error) {
               // Locally acknowledged Smart Account transactions can settle

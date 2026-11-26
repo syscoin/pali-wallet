@@ -25,6 +25,7 @@ import { fetchSmartAccountUserOpTransactions } from './smartAccountHistory';
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
   findUserTxsInProviderByBlocksRange,
+  getAnchoredHistoryBlocks,
   validateAndManageUserTransactions,
 } from './utils';
 
@@ -619,7 +620,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     isPolling?: boolean,
     isRapidPolling?: boolean,
     isCurrentRead?: () => boolean,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    visiblePlacements = false
   ) => {
     const check = () => {
       if (signal?.aborted || (isCurrentRead && !isCurrentRead()))
@@ -739,7 +741,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       ) {
         const existingTxs = currentAccountTxs.ethereum[currentNetworkChainId];
         const pendingTxs = existingTxs.filter((tx: any) =>
-          needsVisibleEvmPlacementCheck(tx)
+          visiblePlacements
+            ? needsVisibleEvmPlacementCheck(tx)
+            : !tx.blockNumber || !tx.blockHash
         );
 
         if (pendingTxs.length > 0) {
@@ -762,6 +766,25 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             }
             return cached;
           };
+
+          if (visiblePlacements) {
+            const heights = new Set<number>(
+              pendingTxs
+                .filter((tx: any) => tx.blockHash && Number(tx.blockNumber) > 0)
+                .map((tx: any) => Number(tx.blockNumber))
+            );
+            const blocks = await getAnchoredHistoryBlocks(
+              web3Provider,
+              heights,
+              getBlockOnce,
+              check
+            );
+            if (blocks)
+              for (const height of heights) {
+                const block = blocks.get(height);
+                if (block) blockFetchCache.set(height, Promise.resolve(block));
+              }
+          }
 
           // Per-tx status lookups still run, but in parallel and without the
           // redundant per-tx block/height calls.

@@ -113,7 +113,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
   const waitForReadSettlement = (completeSubmittedFlow = false) => {
     // A receipt can be visible before the already-scheduled four-second rapid
     // poll starts. Keep that work in this flow's home/acknowledged phase.
-    const notBefore = Date.now() + (completeSubmittedFlow ? 4250 : 0);
+    const notBefore = Date.now() + (completeSubmittedFlow ? 4250 : 250);
     return expect
       .poll(
         () => {
@@ -706,6 +706,9 @@ test('RPC budget and receipts for local wallet transfers', async () => {
     ) =>
       wallet!.step(label + ' transfer', async () => {
         await wallet.ensureOnHome();
+        // Returning from asset import remounts Activity. Charge any reads
+        // started on Home to that phase before measuring the Send form.
+        await waitForReadSettlement();
         const recipientBalance = asset
           ? undefined
           : BigInt(

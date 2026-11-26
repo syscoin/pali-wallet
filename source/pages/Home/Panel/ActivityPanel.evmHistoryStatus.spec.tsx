@@ -858,3 +858,47 @@ it('keeps a verified orphan pending when Smart log discovery returns the stored 
     status: 'pending',
   });
 });
+
+it('checks a dense recent history with one canonical anchor and rechecks individual heights on a fork', async () => {
+  mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: undefined }));
+  await fetchInitial();
+  const hashAt = (height: number) =>
+    '0x' + height.toString(16).padStart(64, '0');
+  const heights = [100, 99, 98, 97, 96, 95];
+  const timestamp = Math.floor(Date.now() / 1000);
+  setRows(
+    heights.map((height) => ({
+      ...transaction,
+      hash: hashAt(200 + height),
+      nonce: height,
+      timestamp,
+      blockNumber: height,
+      blockHash: hashAt(height),
+    }))
+  );
+  let forked = false;
+  provider.getBlock = jest.fn(async (height: number) => ({
+    number: height,
+    hash: hashAt(forked && height >= 98 ? height + 10 : height),
+  }));
+  await renderAfterSettleTime();
+  expect(provider.getBlock.mock.calls).toEqual([[100]]);
+  expect(currentRows()).toHaveLength(heights.length);
+  expect(
+    currentRows().every((row: any) => row.blockHash === hashAt(row.blockNumber))
+  ).toBe(true);
+  provider.getBlock.mockClear();
+  forked = true;
+  await act(async () => jest.advanceTimersByTimeAsync(15_000));
+  expect(
+    provider.getBlock.mock.calls
+      .map(([height]: number[]) => height)
+      .sort((a: number, b: number) => b - a)
+  ).toEqual(heights);
+  expect(
+    currentRows().filter((row: any) => row.blockHash === null)
+  ).toHaveLength(3);
+  expect(
+    currentRows().filter((row: any) => row.blockHash !== null)
+  ).toHaveLength(3);
+});

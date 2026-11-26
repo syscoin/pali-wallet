@@ -130,6 +130,32 @@ const historyScope = () => {
     ]?.address?.toLowerCase(),
   ]);
 };
+/** A fresh canonical anchor authenticates the scan's retained, parent-linked window. */
+export const getAnchoredHistoryBlocks = async (
+  provider: CustomJsonRpcProvider,
+  heights: Set<number>,
+  readHeader: (height: number) => Promise<any>,
+  check: () => void
+) => {
+  const cached = historyScans.get(provider);
+  if (
+    !cached ||
+    cached.scope !== historyScope() ||
+    Date.now() - cached.updatedAt >= HISTORY_CACHE_TTL_MS ||
+    [...heights].filter((height) => cached.blocks.has(height)).length < 2
+  )
+    return;
+  const height = Math.max(...cached.blocks.keys());
+  const anchor = await readHeader(height);
+  check();
+  if (
+    cached.scope === historyScope() &&
+    Number(anchor?.number) === height &&
+    typeof anchor?.hash === 'string' &&
+    anchor.hash.toLowerCase() === cached.blocks.get(height)?.hash
+  )
+    return cached.blocks;
+};
 const historyNumber = (value: unknown): number => {
   if (typeof value !== 'string' || !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(value))
     throw new Error('Invalid history block quantity');
