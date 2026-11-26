@@ -1,6 +1,9 @@
 import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 
-import { DappFeeReviewError } from '../../../shared/dappFeeReviewError';
+import {
+  DappFeeReviewError,
+  type FailedDappFeeRequest,
+} from '../../../shared/dappFeeReviewError';
 import {
   SMART_ACCOUNT_CONTROLLER_PORT,
   SMART_ACCOUNT_FEE_APPROVAL,
@@ -158,6 +161,7 @@ export const controllerErrorResponse = (
     : normalizeControllerErrorMessage(error);
   const submission: {
     code?: string;
+    failedFeeRequest?: FailedDappFeeRequest;
     recipientBlockReason?: string;
     recipientBlockSeverity?: string;
     transactionHash?: string;
@@ -177,8 +181,10 @@ export const controllerErrorResponse = (
     error?.code === 'UTXO_NETWORK_HAS_SENTRY_KEYS'
   )
     submission.code = error.code;
-  if (error instanceof DappFeeReviewError && !trustedBatchHash)
+  if (error instanceof DappFeeReviewError && !trustedBatchHash) {
     submission.code = error.code;
+    submission.failedFeeRequest = error.request;
+  }
   if (
     (error?.code === TRANSACTION_APPROVAL_EXPIRED ||
       error?.code === TRANSACTION_APPROVAL_LOADING) &&

@@ -12673,9 +12673,37 @@ class MainController {
         )
       ).token;
     } catch (error) {
-      if (error instanceof EvmFeeBalanceError)
-        throw new DappFeeReviewError('DAPP_FEE_INSUFFICIENT_FUNDS');
-      throw error;
+      check();
+      if (
+        !(error instanceof DappFeeReviewError) &&
+        !(error instanceof EvmFeeBalanceError) &&
+        (error?.transactionNotBroadcast === true ||
+          error?.message === EVM_TRANSACTION_CONTEXT_CHANGED)
+      )
+        throw error;
+      // This display-only summary carries no gas or signing authority.
+      const request = normalizeDappTransaction(params);
+      if (
+        request.from?.toLowerCase() !== context.account.address.toLowerCase() ||
+        (request.chainId !== undefined &&
+          Number(request.chainId) !== context.chainId)
+      )
+        throw error;
+      throw new DappFeeReviewError(
+        error instanceof DappFeeReviewError
+          ? error.code
+          : error instanceof EvmFeeBalanceError
+          ? 'DAPP_FEE_INSUFFICIENT_FUNDS'
+          : 'DAPP_FEE_FAILED',
+        {
+          from: request.from,
+          to:
+            request.to === undefined || request.to === null
+              ? null
+              : getAddress(request.to),
+          value: BigInt(request.value ?? 0).toString(),
+        }
+      );
     }
   }
 

@@ -604,6 +604,7 @@
     "unableToLoad": "Kann nicht geladen werden",
     "smartAccountPendingReview": "Eine gespeicherte Smart-Account-Transaktion ist noch ungeklärt. Öffne Aktivität, um sie zu prüfen, bevor du eine weitere Transaktion sendest.",
     "smartAccountPayerPending": "Eine frühere Transaktion des Gebührenzahlers muss bestätigt werden, bevor diese Aktion fortgesetzt werden kann. Warte auf die Bestätigung und versuche es erneut.",
+    "requestedNativeValue": "Angeforderter Betrag in nativer Währung",
     "feeEstimateReverted": "Das Netzwerk hat bei der Gasschätzung eine Rückabwicklung gemeldet.",
     "feeEstimateUnsupported": "Dieser RPC-Endpunkt unterstützt keine Gasschätzung.",
     "feeUnavailable": "Gebühr nicht verfügbar",

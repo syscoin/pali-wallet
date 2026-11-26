@@ -1,11 +1,19 @@
+export type FailedDappFeeRequest = Readonly<{
+  from: string;
+  to: string | null;
+  value: string;
+}>;
+
 export class DappFeeReviewError extends Error {
   readonly transactionNotBroadcast = true;
 
   constructor(
     readonly code:
+      | 'DAPP_FEE_FAILED'
       | 'DAPP_FEE_INSUFFICIENT_FUNDS'
       | 'DAPP_FEE_REVERTED'
-      | 'DAPP_FEE_ESTIMATE_UNAVAILABLE'
+      | 'DAPP_FEE_ESTIMATE_UNAVAILABLE',
+    readonly request?: FailedDappFeeRequest
   ) {
     super(code);
   }

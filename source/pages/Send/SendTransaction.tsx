@@ -16,7 +16,11 @@ import {
   getErc20ApprovalHeadingKey,
   getApprovalAddressValues,
   getEffectiveApprovalData,
+  summarizeApproval,
 } from '../../shared/approval';
+import { decodeAssetTransfer } from '../../shared/assetTransfer';
+import { createAssetTransferDisplay } from '../../shared/assetTransferDisplay';
+import type { FailedDappFeeRequest } from '../../shared/dappFeeReviewError';
 import { parseErc20Decimals } from '../../shared/erc20';
 import {
   evmDappFeeChoiceMatches,
@@ -288,6 +292,10 @@ export const SendTransaction = () => {
   const [isPqSigning, setIsPqSigning] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [initialReviewError, setInitialReviewError] = useState<string>();
+  const [failedFeeView, setFailedFeeView] = useState<{
+    key: string;
+    request: FailedDappFeeRequest;
+  }>();
   const [tx, setTx] = useState<ITxState>();
   // An untyped request follows its actual quote, including legacy networks.
   const isLegacyTransaction =
@@ -1316,6 +1324,7 @@ export const SendTransaction = () => {
         if (!isSmartAccountApproval) {
           if (!preparationIsCurrent()) return;
           setGenericFeeView(undefined);
+          setFailedFeeView(undefined);
           const nonce = customNonce ?? dataTx.nonce;
           if (customNonce !== undefined || dataTx.nonce !== undefined)
             await controllerEmitter(
@@ -1562,6 +1571,11 @@ export const SendTransaction = () => {
             return;
           }
           if (!isSmartAccountApproval) {
+            if (e?.failedFeeRequest)
+              setFailedFeeView({
+                key: genericFeeKey,
+                request: e.failedFeeRequest,
+              });
             setInitialReviewError(
               e?.code === 'DAPP_FEE_REVERTED'
                 ? 'send.feeEstimateReverted'
@@ -1859,52 +1873,21 @@ export const SendTransaction = () => {
     approvedTokenInfos?.tokenDecimals,
   ]);
 
-  const failedRequest = (() => {
-    if (
-      !initialReviewError ||
-      initialReviewError === 'app.approvalExpired' ||
-      currentApprovalWalletContextKey !== approvedWalletContextKey
-    )
-      return;
-    try {
-      // Review the requested fields only. A failed quote cannot provide fee
-      // or token execution details, and the dapp's action label is not evidence.
-      const { from, to, data, chainId, value = 0 } = dataTx;
-      if (
-        typeof from !== 'string' ||
-        !/^0x[0-9a-f]{40}$/i.test(from) ||
-        from.toLowerCase() !== approvedContext.account.address.toLowerCase() ||
-        (chainId !== undefined &&
-          Number(chainId) !== approvedContext.chainId) ||
-        (typeof value !== 'string' && !Number.isSafeInteger(value)) ||
-        !/^(?:[0-9]{1,78}|0x[0-9a-f]{1,64})$/i.test(String(value)) ||
-        (data !== undefined &&
-          (typeof data !== 'string' || !/^0x(?:[0-9a-f]{2})*$/i.test(data)))
-      )
-        return;
-      const amount = BigNumber.from(value);
-      if (
-        amount.gt(
-          '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
-        )
-      )
-        return;
-      return {
-        from,
-        to:
-          to == null
-            ? null
-            : /^0x[0-9a-f]{40}$/i.test(toAddressForProvider)
-            ? toAddressForProvider
-            : undefined,
-        value: formatEther(amount),
-        selector: data?.length > 10 ? `${data.slice(0, 10)}…` : data,
-      };
-    } catch {
-      // An invalid request must never be presented as a zero-value transfer.
-      return undefined;
-    }
-  })();
+  const failedRequest =
+    initialReviewError &&
+    currentApprovalWalletContextKey === approvedWalletContextKey &&
+    failedFeeView?.key === genericFeeKey
+      ? failedFeeView.request
+      : undefined;
+  const failedData = failedRequest ? txForEstimation.data : undefined;
+  const failedAsset = useMemo(
+    () => decodeAssetTransfer(failedData, failedRequest?.to),
+    [failedData, failedRequest]
+  );
+  const failedApproval =
+    failedData && failedRequest?.to
+      ? summarizeApproval(failedData, failedRequest.to)
+      : null;
   const canRetryInitialReview =
     initialReviewError !== 'app.approvalExpired' &&
     initialReviewError !== 'send.feeEstimateReverted' &&
@@ -1971,6 +1954,37 @@ export const SendTransaction = () => {
                 <h2 className="text-lg font-semibold mb-3">
                   {t('send.transactionDetails')}
                 </h2>
+                {failedAsset && (
+                  <AssetTransferSummary
+                    transfer={createAssetTransferDisplay(failedAsset)}
+                    compact
+                  />
+                )}
+                {failedApproval && (
+                  <section className="text-xs space-y-2 rounded-lg bg-bkg-2 p-3 my-3 break-words">
+                    <h3 className="font-semibold">
+                      {t('send.unverifiedApprovalRequest')}
+                    </h3>
+                    <p>
+                      {t(`transactions.methodNames.${failedApproval.method}`)}
+                    </p>
+                    <p>
+                      {t('send.approvalAuthority')} {failedApproval.authority}
+                    </p>
+                    {failedApproval.amountUnits !== undefined && (
+                      <p>
+                        {t('assetTransfer.rawUnits')}{' '}
+                        {failedApproval.amountUnits}
+                      </p>
+                    )}
+                    {failedApproval.approved !== undefined && (
+                      <p>
+                        {t('send.approvalRawValue')}{' '}
+                        {String(failedApproval.approved)}
+                      </p>
+                    )}
+                  </section>
+                )}
                 <dl className="text-xs space-y-2 rounded-lg bg-bkg-2 p-3 mb-3 break-words">
                   {host && (
                     <>
@@ -1990,19 +2004,24 @@ export const SendTransaction = () => {
                         )
                       : failedRequest.to || t('receive.addressUnavailable')}
                   </dd>
-                  <dt>{t('send.amount')}</dt>
+                  <dt>{t('send.requestedNativeValue')}</dt>
                   <dd>
-                    {failedRequest.value}{' '}
+                    {formatEther(BigNumber.from(failedRequest.value))}{' '}
                     {activeNetwork.currency?.toUpperCase()}
                   </dd>
-                  {failedRequest.selector &&
-                    failedRequest.selector !== '0x' && (
-                      <>
-                        <dt>{t('send.data')}</dt>
-                        <dd>{failedRequest.selector}</dd>
-                      </>
-                    )}
+                  <dt>{t('send.networkFee')}</dt>
+                  <dd>{t('send.feeUnavailable')}</dd>
                 </dl>
+                {failedData && failedData !== '0x' && (
+                  <details className="mt-3 text-xs">
+                    <summary>{t('send.data')}</summary>
+                    <code>
+                      {failedData.length > 10
+                        ? `${failedData.slice(0, 10)}…`
+                        : failedData}
+                    </code>
+                  </details>
+                )}
               </>
             )}
           </div>

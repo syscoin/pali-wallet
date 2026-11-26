@@ -1094,6 +1094,24 @@ it.each([
   }
 );
 
+it('keeps canonical token transfer recipient and raw amount visible when estimation fails', async () => {
+  const recipient = '0x' + '77'.repeat(20);
+  const request = mockQuery.tx;
+  request.data = new Interface([
+    'function transfer(address,uint256)',
+  ]).encodeFunctionData('transfer', [recipient, 310000]);
+  mockFee.mockRejectedValueOnce({
+    code: 'DAPP_FEE_REVERTED',
+    failedFeeRequest: { from: request.from, to: request.to, value: '0' },
+  });
+  render(<SendTransaction />);
+  await screen.findByText('send.feeEstimateReverted');
+  expect(screen.getByText(recipient)).toBeTruthy();
+  expect(screen.getByText('310000')).toBeTruthy();
+  expect(screen.getByText('assetTransfer.rawUnits')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+});
+
 it('cancels the initial Smart Account review without signing or submitting', async () => {
   mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
   mockState.vault.accounts.HDAccount[0].smartAccount = {};

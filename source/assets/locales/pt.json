@@ -604,6 +604,7 @@
     "unableToLoad": "Não foi possível carregar",
     "smartAccountPendingReview": "Uma transação salva da conta inteligente ainda não foi resolvida. Abra Atividade para revisá-la antes de enviar outra transação.",
     "smartAccountPayerPending": "Uma transação anterior da conta que paga as taxas precisa ser confirmada antes de continuar. Aguarde a confirmação e tente novamente.",
+    "requestedNativeValue": "Valor nativo solicitado",
     "feeEstimateReverted": "A rede informou que a transação foi revertida durante a estimativa de gás.",
     "feeEstimateUnsupported": "Este endpoint RPC não oferece suporte à estimativa de gás.",
     "feeUnavailable": "Taxa indisponível",
