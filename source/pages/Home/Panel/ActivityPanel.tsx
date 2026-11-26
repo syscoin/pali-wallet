@@ -115,22 +115,30 @@ export const TransactionsPanel = () => {
     !networkTransition &&
     !isSwitchingAccount;
   const historyCheckedAt = currentHistory?.checkedAt;
+  const refreshSavedPlacement =
+    activity.hasUnresolvedSavedPlacement &&
+    !networkTransition &&
+    !isSwitchingAccount;
+  const refreshSavedPlacementRef = useRef(activity.refreshSavedPlacement);
+  refreshSavedPlacementRef.current = activity.refreshSavedPlacement;
   useEffect(() => {
-    if (!refreshVisibleHistory) return;
+    if (!refreshVisibleHistory && !refreshSavedPlacement) return;
     const refresh = () => {
       if (document.visibilityState !== 'visible') return;
+      if (refreshSavedPlacement) void refreshSavedPlacementRef.current();
       if (
-        refreshRpcRows &&
-        !rpcRowsRef.current?.some((row) => needsVisibleEvmPlacementCheck(row))
+        refreshVisibleHistory &&
+        (!refreshRpcRows ||
+          rpcRowsRef.current?.some((row) => needsVisibleEvmPlacementCheck(row)))
       )
-        return;
-      void controllerEmitter(
-        ['wallet', 'refreshTransactionHistory'],
-        [scope, 'visible']
-      ).catch(() => undefined);
+        void controllerEmitter(
+          ['wallet', 'refreshTransactionHistory'],
+          [scope, 'visible']
+        ).catch(() => undefined);
     };
     if (
       refreshRpcRows ||
+      refreshSavedPlacement ||
       (historyCheckedAt !== undefined &&
         Date.now() - historyCheckedAt >= 15_000)
     )
@@ -141,7 +149,13 @@ export const TransactionsPanel = () => {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [refreshVisibleHistory, refreshRpcRows, historyCheckedAt, scope]);
+  }, [
+    refreshVisibleHistory,
+    refreshRpcRows,
+    refreshSavedPlacement,
+    historyCheckedAt,
+    scope,
+  ]);
   const startFailed = needsInitialRead && failedStartScope === scopeKey;
   const beginRetry = useRequestScope(scopeKey);
   const retryPending = useRef<() => boolean>();
