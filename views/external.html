@@ -93,6 +93,71 @@
         opacity: 1;
       }
 
+      html {
+        --pali-viewport-footer-clearance: var(
+          --pali-toast-footer-clearance,
+          0px
+        );
+      }
+
+      [data-pali-approval-surface] {
+        --pali-approval-height: min(100dvh, 800px);
+        /* Scroll padding is relative to the panel. Toasts still use the viewport. */
+        --pali-toast-footer-clearance: max(
+          0px,
+          calc(
+            var(--pali-viewport-footer-clearance) -
+              (100dvh - var(--pali-approval-height)) / 2
+          )
+        );
+        height: var(--pali-approval-height);
+        /* Fixed action areas belong to the review surface, not the window. */
+        contain: layout;
+      }
+
+      [data-pali-approval-surface] [data-navigation-scroll='wallet-layout'] {
+        height: 100%;
+        min-height: 0;
+        max-height: 100%;
+      }
+
+      [data-pali-approval-surface] .h-screen {
+        height: var(--pali-approval-height);
+      }
+
+      /* Reserve space for the banner above full-height review routes. The
+       * detail scroller can then expose its last row above the action footer. */
+      [data-pali-approval-surface]
+        [data-navigation-scroll='wallet-layout']:has(
+          > .animate-fadeIn > .h-screen
+        ) {
+        display: flex;
+        flex-direction: column;
+      }
+
+      [data-pali-approval-surface]
+        [data-navigation-scroll='wallet-layout']:has(
+          > .animate-fadeIn > .h-screen
+        )
+        > * {
+        flex-shrink: 0;
+      }
+
+      [data-pali-approval-surface]
+        [data-navigation-scroll='wallet-layout']
+        > .animate-fadeIn:has(> .h-screen) {
+        flex: 1 1 0%;
+        min-height: 0;
+      }
+
+      [data-pali-approval-surface]
+        [data-navigation-scroll='wallet-layout']
+        > .animate-fadeIn
+        > .h-screen {
+        height: 100%;
+        min-height: 0;
+      }
+
       @media (max-width: 399px) {
         #external-root .min-w-popup {
           min-width: 0;
@@ -111,12 +176,6 @@
 
         #external-root .min-h-popup {
           min-height: 0;
-        }
-
-        #external-root .min-h-popup[data-navigation-scroll='wallet-layout'] {
-          height: 100%;
-          min-height: 0;
-          max-height: 100%;
         }
       }
     </style>
