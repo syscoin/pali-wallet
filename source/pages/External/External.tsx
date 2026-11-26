@@ -47,7 +47,10 @@ const External: FC = () => {
     // synchronous, matching the popup when a lazy destination is pending.
 
     <BrowserRouter useTransitions={false}>
-      <div className="mx-auto w-full min-w-popup max-w-popup h-full min-h-popup font-poppins text-xl overflow-x-hidden">
+      <div
+        data-pali-approval-surface
+        className="mx-auto w-full min-w-popup max-w-popup h-full min-h-popup font-poppins text-xl overflow-x-hidden"
+      >
         <Router />
       </div>
     </BrowserRouter>

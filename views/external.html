@@ -119,6 +119,117 @@
           max-height: 100%;
         }
       }
+
+      /* In a short transaction popup, give the detail scroller the space
+       * below the header so its final rows can clear the fixed actions. */
+      @media (max-height: 499px) {
+        #external-root
+          [data-navigation-scroll='wallet-layout']:has(
+            > .animate-fadeIn > [data-transaction-review]
+          ) {
+          display: flex;
+          flex-direction: column;
+        }
+
+        #external-root
+          [data-navigation-scroll='wallet-layout']:has(
+            > .animate-fadeIn > [data-transaction-review]
+          )
+          > * {
+          flex-shrink: 0;
+        }
+
+        #external-root
+          [data-navigation-scroll='wallet-layout']
+          > .animate-fadeIn:has(> [data-transaction-review]) {
+          flex: 1 1 0%;
+          min-height: 0;
+        }
+
+        #external-root [data-transaction-review] {
+          height: 100%;
+          min-height: 0;
+        }
+      }
+
+      /* The toolbar-size and narrow external flows retain their normal layout. */
+      @media (min-width: 621px), (min-height: 621px) {
+        html {
+          --pali-viewport-footer-clearance: var(
+            --pali-toast-footer-clearance,
+            0px
+          );
+        }
+
+        #external-root [data-pali-approval-surface] {
+          --pali-approval-height: min(100dvh, 800px);
+          /* Review scroll offsets are panel-relative, while toasts are viewport-relative. */
+          --pali-toast-footer-clearance: max(
+            0px,
+            calc(
+              var(--pali-viewport-footer-clearance) -
+                (100dvh - var(--pali-approval-height)) / 2
+            )
+          );
+          height: var(--pali-approval-height);
+          min-height: 0;
+          contain: layout;
+        }
+
+        #external-root
+          [data-pali-approval-surface]
+          [data-navigation-scroll='wallet-layout'] {
+          height: 100%;
+          min-height: 0;
+          max-height: 100%;
+        }
+
+        #external-root [data-pali-approval-surface] .h-screen {
+          height: var(--pali-approval-height);
+        }
+
+        #external-root
+          [data-pali-approval-surface]
+          [data-navigation-scroll='wallet-layout']:has(
+            > .animate-fadeIn > .h-screen
+          ) {
+          display: flex;
+          flex-direction: column;
+        }
+
+        #external-root
+          [data-pali-approval-surface]
+          [data-navigation-scroll='wallet-layout']:has(
+            > .animate-fadeIn > .h-screen
+          )
+          > * {
+          flex-shrink: 0;
+        }
+
+        #external-root
+          [data-pali-approval-surface]
+          [data-navigation-scroll='wallet-layout']
+          > .animate-fadeIn:has(> .h-screen) {
+          flex: 1 1 0%;
+          min-height: 0;
+        }
+
+        #external-root
+          [data-pali-approval-surface]
+          [data-navigation-scroll='wallet-layout']
+          > .animate-fadeIn
+          > .h-screen {
+          height: 100%;
+          min-height: 0;
+        }
+
+        #external-root
+          [data-pali-approval-surface]
+          .h-screen
+          > .overflow-y-auto {
+          scroll-padding-bottom: var(--pali-toast-footer-clearance, 0px);
+        }
+      }
     </style>
   </head>
   <body
