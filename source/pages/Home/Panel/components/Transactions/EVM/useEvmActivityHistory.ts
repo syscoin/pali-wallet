@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 
 import {
   EVM_ACTIVITY_CURSOR_STALE,
+  EVM_TRANSACTION_HISTORY_SOURCE,
   mergeEvmExplorerTransactions,
 } from '../../../../../../shared/evmHistory';
 import { SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT } from '../../../../../../shared/smartAccountControllerAuthority';
@@ -19,6 +20,7 @@ import type { SmartAccountCancellationRequest } from '../../../../../../wallet/s
 import type { SmartAccountReplayIntent } from '../../../../../../wallet/smartAccountSignedReplay';
 
 type ActivityRow = ITransactionInfoEvm & {
+  retainedPhase?: EvmActivitySummary['phase'];
   smartAccount?: SmartAccountReplayIntent;
 };
 
@@ -70,17 +72,27 @@ export const useEvmActivityHistory = ({
     active: boolean;
     epoch: number;
     includeLocal: boolean;
+    lastObservation: Map<string, number>;
+    observationPending?: boolean;
     pending?: Promise<void>;
     rebase?: boolean;
     revision: number;
     scopeKey: string;
-  }>({ active: false, includeLocal, epoch: 0, revision: 0, scopeKey });
+  }>({
+    active: false,
+    includeLocal,
+    epoch: 0,
+    revision: 0,
+    scopeKey,
+    lastObservation: new Map(),
+  });
   if (
     context.current.scopeKey !== scopeKey ||
     context.current.includeLocal !== includeLocal
   )
     context.current = {
       active: false,
+      lastObservation: new Map(),
       includeLocal,
       epoch: 0,
       revision: context.current.revision + 1,
@@ -149,7 +161,10 @@ export const useEvmActivityHistory = ({
               page.nextCursor === beforeHash))
         )
           throw new Error('Activity page unavailable');
-        const transactions = page.transactions.map(projectEvmActivityRow);
+        const transactions = page.transactions.map((row) => ({
+          ...projectEvmActivityRow(row),
+          ...(row.smartAccount ? { retainedPhase: row.phase } : {}),
+        }));
         visit.rebase = false;
         setState((previous) => {
           const rows = rebase
@@ -232,19 +247,78 @@ export const useEvmActivityHistory = ({
       );
     };
   }, [scopeKey, includeLocal]);
-  const transactions = useMemo(
+  const transactions = useMemo(() => {
+    if (!includeLocal) return indexedTransactions;
+    const localRows = state.page.transactions;
+    const savedByHash = new Map(
+      localRows.map((row) => [row.hash.toLowerCase(), row])
+    );
+    const hydrated = indexedTransactions.map((row) => {
+      if (
+        row.historySource !== EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned ||
+        typeof row.hash !== 'string'
+      )
+        return row;
+      const local = savedByHash.get(row.hash.toLowerCase());
+      // The worker added only public placement and summary fields. Keep the
+      // already-loaded signed intent for display without storing its bytes.
+      return local?.smartAccount ? { ...local, ...row } : row;
+    });
+    return mergeEvmExplorerTransactions(
+      hydrated,
+      [],
+      chainId,
+      false,
+      localRows
+    );
+  }, [includeLocal, indexedTransactions, chainId, state.page.transactions]);
+  const indexedHashes = useMemo(
     () =>
-      includeLocal
-        ? mergeEvmExplorerTransactions(
-            indexedTransactions,
-            [],
-            chainId,
-            false,
-            state.page.transactions
-          )
-        : indexedTransactions,
-    [includeLocal, indexedTransactions, chainId, state.page.transactions]
+      new Set(
+        indexedTransactions.flatMap((row) =>
+          typeof row.hash === 'string' ? [row.hash.toLowerCase()] : []
+        )
+      ),
+    [indexedTransactions]
   );
+  const candidates = transactions.slice(0, 30).filter((row: ActivityRow) => {
+    const hash = typeof row.hash === 'string' ? row.hash.toLowerCase() : '';
+    return (
+      hash &&
+      row.smartAccount &&
+      row.smartAccount.account.toLowerCase() ===
+        accountAddress?.toLowerCase() &&
+      !row.smartAccount.cancellation &&
+      (row.retainedPhase === 'signed' ||
+        row.retainedPhase === 'attempted' ||
+        row.retainedPhase === 'submitted') &&
+      !indexedHashes.has(hash) &&
+      /^0x[0-9a-f]{64}$/.test(hash)
+    );
+  });
+  const refreshSavedPlacement = async () => {
+    if (!visit.active || visit.observationPending || !candidates.length) return;
+    const now = Date.now();
+    const lastChecked = (row: ITransactionInfoEvm) =>
+      visit.lastObservation.get(row.hash.toLowerCase()) ?? -Infinity;
+    const [next] = [...candidates].sort(
+      (a, b) => lastChecked(a) - lastChecked(b)
+    );
+    if (now - lastChecked(next) < 14_000) return;
+    const hash = next.hash.toLowerCase();
+    visit.lastObservation.set(hash, now);
+    visit.observationPending = true;
+    try {
+      await controllerEmitter(
+        ['wallet', 'observeSavedSmartAccountActivity'],
+        [hash, scope]
+      );
+    } catch {
+      // An unavailable receipt leaves the saved row unresolved.
+    } finally {
+      visit.observationPending = false;
+    }
+  };
   const {
     smartCancellationHashes,
     smartCancellationRetries,
@@ -287,6 +361,8 @@ export const useEvmActivityHistory = ({
   };
   return {
     transactions,
+    hasUnresolvedSavedPlacement: candidates.length > 0,
+    refreshSavedPlacement,
     signedOperations: includeLocal
       ? state.signedOperations
       : EMPTY.signedOperations,

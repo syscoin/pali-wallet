@@ -1278,6 +1278,41 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     }
   );
 
+  it.each([
+    ['SMART_ACCOUNT_PENDING_STATE', 'send.smartAccountPendingReview'],
+    [
+      'SMART_ACCOUNT_AUTHORIZATION_CORRUPT',
+      'send.smartAccountAuthorizationUnverified',
+    ],
+  ])(
+    'opens Activity when registration preparation returns %s',
+    async (error, message) => {
+      await beginRegistration(undefined, true);
+      const original = mockEmitter.getMockImplementation()!;
+      mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
+        path[1] === 'prepareSmartAccountExecutions'
+          ? Promise.reject(new Error(error))
+          : original(path, ...args)
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'settings.registerSmartAccount' })
+      );
+      expect(await screen.findByText(message)).toBeTruthy();
+      expect(Boolean(screen.queryByText('transactions.unconfirmed'))).toBe(
+        error === 'SMART_ACCOUNT_PENDING_STATE'
+      );
+      expect(mockAlert.error).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole('button', { name: 'settings.registerSmartAccount' })
+      ).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.activity' }));
+      expect(mockNavigate).toHaveBeenCalledWith('/home?tab=activity');
+      const methods = mockEmitter.mock.calls.map(([path]) => path[1]);
+      expect(methods).not.toContain('signSmartAccountPreparedOwner');
+      expect(methods).not.toContain('submitSmartAccountExecution');
+    }
+  );
+
   it('shows an ordinary registration error in place', async () => {
     const pending = await beginRegistration();
     await act(async () => pending.reject(new Error('Registration rejected')));

@@ -602,3 +602,78 @@ test('retains scoped Smart cancellation metadata while indexed rows supply the b
     ])
   );
 });
+
+test('checks one visible retained outer hash per tick until ordinary history owns it', async () => {
+  jest.useFakeTimers();
+  try {
+    const account = '0x' + '44'.repeat(20);
+    const scope = navigation('smart');
+    const retained = {
+      ...row('1'),
+      phase: 'signed',
+      operation: 'speed-up',
+      originalHash: hash('f'),
+      smartAccount: {
+        account,
+        operationHash: hash('4'),
+        operationCount: 1,
+        callData: '0x1234',
+      },
+    };
+    mockEmitter.mockImplementation((methods) =>
+      Promise.resolve(
+        methods[1] === 'getSavedEvmTransactions'
+          ? { transactions: [retained], nextCursor: null }
+          : null
+      )
+    );
+    const { result, rerender } = renderHook(
+      ({ indexedTransactions }) =>
+        useEvmActivityHistory({
+          includeLocal: true,
+          scope,
+          accountAddress: account,
+          indexedTransactions,
+          chainId: 57057,
+        }),
+      { initialProps: { indexedTransactions: [] as any[] } }
+    );
+    await flush();
+    expect(result.current.hasUnresolvedSavedPlacement).toBe(true);
+    await act(async () => result.current.refreshSavedPlacement());
+    expect(mockEmitter).toHaveBeenLastCalledWith(
+      ['wallet', 'observeSavedSmartAccountActivity'],
+      [retained.hash, scope]
+    );
+    await act(async () => result.current.refreshSavedPlacement());
+    expect(mockEmitter).toHaveBeenCalledTimes(2);
+
+    jest.advanceTimersByTime(15_000);
+    await act(async () => result.current.refreshSavedPlacement());
+    expect(mockEmitter).toHaveBeenCalledTimes(3);
+    rerender({
+      indexedTransactions: [
+        { confirmations: 0 },
+        {
+          hash: retained.hash,
+          blockNumber: '12',
+          historySource: 'local-signed',
+        },
+      ],
+    });
+    expect(
+      result.current.transactions.find((item) => item.hash === retained.hash)
+    ).toMatchObject({
+      blockNumber: '12',
+      input: '0x1234',
+      isSpeedUp: true,
+      replacesHash: hash('f'),
+    });
+    expect(result.current.hasUnresolvedSavedPlacement).toBe(false);
+    jest.advanceTimersByTime(15_000);
+    await act(async () => result.current.refreshSavedPlacement());
+    expect(mockEmitter).toHaveBeenCalledTimes(3);
+  } finally {
+    jest.useRealTimers();
+  }
+});

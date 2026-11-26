@@ -167,7 +167,11 @@ describe('SmartAccountPolicy guardian approval', () => {
         // This handler-only harness suppresses effects. Model the verified
         // guardian observation; mounted observation/failure tests exercise the
         // real read lifecycle separately.
-        if (index === 6)
+        if (
+          hookStates[index]?.snapshot === null &&
+          typeof hookStates[index]?.scope === 'string' &&
+          hookStates[index]?.error === false
+        )
           hookStates[index] = {
             ...hookStates[index],
             snapshot: guardianObservation(),
