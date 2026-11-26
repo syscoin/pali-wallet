@@ -1,3 +1,4 @@
+import { readPublicSyscoinFee } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core.js';
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import { findUtxoCoinByRegistration } from '@sidhujag/sysweb3-network/cjs/coin-utils.js';
 import { getNetworkConfig } from '@sidhujag/sysweb3-network/cjs/networks.js';
@@ -59,6 +60,41 @@ const max = (a: bigint, b: bigint) => (a >= b ? a : b);
 const unsupported = () =>
   new Error('This transaction is unsupported for wallet replacement.');
 const maxFeeRate = BigInt(5000);
+
+export async function readUtxoReplacementFee(
+  url: string,
+  read: ReturnType<typeof createOwnedUtxoBlockbookRead>
+): Promise<number | undefined> {
+  const noEstimate = new Error('Blockbook has no replacement fee estimate');
+  try {
+    return await readPublicSyscoinFee(url, {
+      assertCurrent: read.assertCurrent,
+      signal: read.signal,
+      async fetch(input, init) {
+        const response = await read.fetch(input, init);
+        if (response.ok) {
+          const body = await response.clone().json();
+          read.assertCurrent();
+          // Blockbook can return a successful zero quote when no estimate exists.
+          if (
+            body &&
+            typeof body === 'object' &&
+            !Array.isArray(body) &&
+            !Object.hasOwn(body, 'error') &&
+            typeof body.result === 'string' &&
+            /^0(?:\.0+)?$/.test(body.result)
+          )
+            throw noEstimate;
+        }
+        return response;
+      },
+    });
+  } catch (error) {
+    if (error !== noEstimate) throw error;
+    read.assertCurrent();
+    return undefined;
+  }
+}
 
 function minimumFee(previousFee: bigint, previousSize: bigint, size: bigint) {
   // One sat/vB for incremental relay and a strictly higher fee rate.
@@ -487,6 +523,7 @@ export async function prepareUtxoReplacement({
   assertPsbtWorkBudget(quote);
   check();
   return Object.freeze({
+    kind,
     psbt: quote,
     review,
     bindSigned(signed: PsbtData) {

@@ -23,13 +23,26 @@ const mockTokenIcon = jest.fn();
 let mockActiveAssets: { syscoin: any[] };
 let mockScope: { account: string; network: string };
 let mockUrl: string;
+let mockReplacedTxid: string | undefined;
 let mockSequence = 0;
 jest.mock('react-redux', () => ({
   useSelector: (selector: any) =>
     selector({
       vault: {
+        activeAccount: { type: 'HDAccount', id: 0 },
         activeNetwork: { currency: 'tsys', chainId: 5700, url: mockUrl },
+        accountTransactions: {},
       },
+      ...(mockReplacedTxid && {
+        vaultGlobal: {
+          utxoActivityReplacements: {
+            scope: mockScope,
+            winners: {
+              ['c'.repeat(64)]: { replacedTxids: [mockReplacedTxid] },
+            },
+          },
+        },
+      }),
     }),
 }));
 jest.mock('utils/navigationState', () => ({
@@ -90,6 +103,7 @@ beforeEach(() => {
   mockScope = { account: 'account-a', network: `network-${++mockSequence}` };
   mockUrl = 'https://blockbook.example';
   mockActiveAssets = { syscoin: [] };
+  mockReplacedTxid = undefined;
 });
 
 const fullBridge = (amount = '100000000') => ({
@@ -692,3 +706,192 @@ it.each([
     expect(mockEmitter).not.toHaveBeenCalled();
   }
 );
+
+const pendingNativeRow = {
+  ...compactBridgeNativeOffset,
+  tokenType: undefined,
+  blockHeight: 0,
+  confirmations: 0,
+  direction: 'sent',
+} as const;
+
+it('checks eligibility only after opening the outgoing pending row pencil', async () => {
+  const user = userEvent.setup();
+  mockEmitter.mockResolvedValueOnce({ cancel: true, speedUp: true });
+  render(<UtxoTransactionsListComponent tx={pendingNativeRow} />);
+  const trigger = screen.getByRole('button', {
+    name: 'Transaction Options',
+  });
+  expect(mockEmitter).not.toHaveBeenCalled();
+  trigger.focus();
+  await user.keyboard('{Enter}');
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getUtxoReplacementActions'],
+    [pendingNativeRow.txid, mockScope],
+    15_000,
+    false
+  );
+  expect(screen.getByRole('menuitem', { name: 'header.speedUp' })).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: 'buttons.cancel' })).toBeTruthy();
+  expect(
+    screen.getByRole('menuitem', { name: 'transactions.seeDetails' })
+  ).toBeTruthy();
+});
+
+it('keeps replacement actions hidden when the selected wallet changes before eligibility returns', async () => {
+  let settle!: (value: unknown) => void;
+  mockEmitter.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        settle = resolve;
+      })
+  );
+  mockEmitter.mockResolvedValueOnce({ cancel: false, speedUp: false });
+  const user = userEvent.setup();
+  const view = render(<UtxoTransactionsListComponent tx={pendingNativeRow} />);
+  const pencil = () =>
+    screen.getByRole('button', { name: 'Transaction Options' });
+  await user.click(pencil());
+  mockScope = { ...mockScope, account: 'account-b' };
+  view.rerender(<UtxoTransactionsListComponent tx={{ ...pendingNativeRow }} />);
+  await act(async () => settle({ cancel: true, speedUp: true }));
+  await user.click(pencil());
+  expect(screen.queryByRole('menuitem', { name: 'header.speedUp' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: 'buttons.cancel' })).toBeNull();
+  expect(mockEmitter).toHaveBeenLastCalledWith(
+    ['wallet', 'getUtxoReplacementActions'],
+    [pendingNativeRow.txid, mockScope],
+    15_000,
+    false
+  );
+});
+
+it.each([
+  {
+    direction: 'received' as const,
+    addressValueIn: '0',
+    addressValueOut: '1000',
+  },
+  { blockHeight: 100 },
+  { isCanceled: true },
+  { tokenType: 'SPTAssetAllocationBurnToNEVM' },
+])(
+  'keeps the Details arrow for a row without plausible replacement actions (%j)',
+  (patch) => {
+    render(
+      <UtxoTransactionsListComponent tx={{ ...pendingNativeRow, ...patch }} />
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Transaction Options' })
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'Details' })).toBeTruthy();
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it('keeps canonically replaced Activity rows on the Details arrow', () => {
+  mockReplacedTxid = pendingNativeRow.txid;
+  render(<UtxoTransactionsListComponent tx={pendingNativeRow} />);
+  expect(screen.getByText('transactions.replaced')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Details' })).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'Transaction Options' })
+  ).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('exposes the pencil for a locally acknowledged outgoing send before the indexer supplies direction', () => {
+  const acknowledged = {
+    ...pendingNativeRow,
+    addressValueIn: undefined,
+    addressValueOut: undefined,
+    direction: undefined,
+    localAcknowledgedInputs: {
+      outpoints: [`${'ab'.repeat(32)}:0`],
+    },
+  };
+  const view = render(<UtxoTransactionsListComponent tx={acknowledged} />);
+  expect(
+    screen.queryByRole('button', { name: 'Transaction Options' })
+  ).toBeNull();
+  view.rerender(
+    <UtxoTransactionsListComponent locallyAcknowledged tx={acknowledged} />
+  );
+  expect(
+    screen.getByRole('button', { name: 'Transaction Options' })
+  ).toBeTruthy();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('exposes the pencil for a self-send whose only debit is the network fee', () => {
+  render(
+    <UtxoTransactionsListComponent
+      tx={{
+        ...pendingNativeRow,
+        addressValueIn: '1000',
+        addressValueOut: '995',
+        direction: undefined,
+      }}
+    />
+  );
+  expect(
+    screen.getByRole('button', { name: 'Transaction Options' })
+  ).toBeTruthy();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['speed-up', 'header.speedUp', {}],
+  ['cancel', 'transactions.cancellation', { confirmations: 2, blockHeight: 9 }],
+] as const)(
+  'labels a local %s replacement without reading the network',
+  (kind, title, status) => {
+    const originalTxid = 'e'.repeat(64);
+    render(
+      <UtxoTransactionsListComponent
+        replacement={{ kind, originalTxid }}
+        tx={{ ...pendingNativeRow, ...status }}
+      />
+    );
+    expect(screen.getByText(title)).toBeTruthy();
+    expect(screen.getByTitle(originalTxid).textContent).toBe(
+      `transactions.replaces: ${originalTxid}`
+    );
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it.each(['speed-up', 'cancel'] as const)(
+  'shows Confirmed for a mined %s replacement',
+  (kind) => {
+    render(
+      <UtxoTransactionsListComponent
+        replacement={{ kind, originalTxid: 'e'.repeat(64) }}
+        tx={{ ...pendingNativeRow, confirmations: 2, blockHeight: 9 }}
+      />
+    );
+    expect(screen.getByText('send.confirmed')).toBeTruthy();
+    expect(screen.queryByText('send.sent')).toBeNull();
+  }
+);
+
+it('does not trust replacement labels or menu eligibility from an indexer row', async () => {
+  const user = userEvent.setup();
+  mockEmitter.mockResolvedValue({ cancel: false, speedUp: false });
+  const forged = {
+    ...pendingNativeRow,
+    replacementOf: 'e'.repeat(64),
+    replacementKind: 'cancel',
+    localAcknowledgedInputs: {
+      replacement: { originalTxid: 'e'.repeat(64), kind: 'cancel' },
+    },
+  };
+  render(<UtxoTransactionsListComponent tx={forged} />);
+  expect(screen.queryByText('transactions.cancellation')).toBeNull();
+  expect(screen.queryByText(/transactions.replaces/)).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: 'Transaction Options' }));
+  await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole('menuitem', { name: 'header.speedUp' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: 'buttons.cancel' })).toBeNull();
+});

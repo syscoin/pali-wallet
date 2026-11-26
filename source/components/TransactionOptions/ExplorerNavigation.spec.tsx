@@ -149,6 +149,7 @@ jest.mock('components/index', () => ({
   Icon: () => null,
 }));
 jest.mock('components/Icon/Icon', () => ({
+  Icon: () => null,
   DetailArrowSvg: () => <button type="button">Details</button>,
   ExternalLinkSvg: () => null,
   TrashIconSvg: () => null,

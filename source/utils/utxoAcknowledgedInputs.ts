@@ -2,11 +2,17 @@
 export const UTXO_ACKNOWLEDGED_INPUTS_WINDOW_MS = 2 * 60 * 1000;
 export const UTXO_NETWORK_CATCHING_UP = 'UTXO_NETWORK_CATCHING_UP';
 
+export type UtxoAcknowledgedReplacement = Readonly<{
+  kind: 'speed-up' | 'cancel';
+  originalTxid: string;
+}>;
+
 export type UtxoAcknowledgedInputs = {
   accountXpub: string;
   acknowledgedAt: number;
   networkUrl: string;
   outpoints: string[];
+  replacement?: UtxoAcknowledgedReplacement;
 };
 
 type Input = { hash: Uint8Array; index: number };
@@ -48,7 +54,9 @@ export const utxoInputOutpoints = (inputs: readonly Input[]): string[] => {
 /** Only trusted local ACK handling constructs this compact public metadata. */
 export const createUtxoAcknowledgedInputs = (
   inputs: readonly Input[],
-  scope: Pick<Scope, 'accountXpub' | 'networkUrl'>,
+  scope: Pick<Scope, 'accountXpub' | 'networkUrl'> & {
+    replacement?: UtxoAcknowledgedReplacement;
+  },
   acknowledgedAt = Date.now()
 ): UtxoAcknowledgedInputs => {
   if (
@@ -63,6 +71,7 @@ export const createUtxoAcknowledgedInputs = (
     accountXpub: scope.accountXpub,
     acknowledgedAt,
     outpoints: utxoInputOutpoints(inputs),
+    ...(scope.replacement && { replacement: { ...scope.replacement } }),
   };
 };
 

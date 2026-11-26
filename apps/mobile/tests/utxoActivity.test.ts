@@ -836,3 +836,22 @@ test('an unclipped prefix repair retains forty rows without claiming a clipped p
     assert.equal(c.getSnapshot().windowed, false, 'the footer must remain forty transactions shown without a misleading Pages1–1 range');
   } finally { c.dispose(); }
 });
+
+test('labels only locally matched indexed replacement rows and tolerates missing metadata', async () => {
+  const f = fixture({ count: 2, replace(path, body) {
+    if (path.includes('/address/')) body.transactions[1].replacementKind = 'cancel';
+    return body;
+  } });
+  let lookups = 0;
+  const page = await read(f, 1, { ...source, async readReplacementKinds(ids) {
+    lookups++;
+    assert.deepEqual(ids, [ID(1), ID(2)]);
+    return new Map([[ID(1), 'speed-up'], [ID(3), 'cancel']]);
+  } });
+  assert.equal(lookups, 1);
+  assert.equal(page.rows[0]?.replacementKind, 'speed-up');
+  assert.equal(page.rows[1]?.replacementKind, undefined);
+  assert.equal(f.calls.length, 3, 'replacement labels perform no network reads');
+  const unlabelled = await read(f, 1, { ...source, async readReplacementKinds() { throw new Error('Unavailable records'); } });
+  assert.deepEqual(unlabelled.rows.map(row => row.replacementKind), [undefined, undefined]);
+});

@@ -139,6 +139,39 @@ it.each([429, 503])(
   }
 );
 
+it('recovers one Fetch connection failure on the same owned SDK quote route', async () => {
+  const transport = jest
+    .fn(async (request: string) => {
+      const response = new Response('[]');
+      Object.defineProperty(response, 'url', { value: request });
+      return response;
+    })
+    .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  const signal = options().signal;
+  const owned = createOwnedUtxoBlockbookRead(
+    {
+      kind: 'wallet',
+      url: 'https://blockbook.invalid',
+      address: 'captured-address',
+      xpub: '',
+    },
+    signal,
+    current,
+    transport
+  );
+  const pending = syscoinUtils.fetchBackendUTXOS(
+    'https://blockbook.invalid',
+    'captured-address',
+    undefined,
+    owned
+  );
+  await jest.advanceTimersByTimeAsync(1000);
+  await expect(pending).resolves.toMatchObject({
+    addressOrXpub: 'captured-address',
+  });
+  expect(transport.mock.calls.map(([request]) => request)).toEqual([url, url]);
+});
+
 it('exhausts four attempts once even inside an actual SDK funding read', async () => {
   const cancelled: jest.SpyInstance[] = [];
   const transport = jest.fn(async () => {
@@ -164,9 +197,9 @@ it('exhausts four attempts once even inside an actual SDK funding read', async (
     undefined,
     owned
   );
-  const rejected = expect(pending).rejects.toThrow(
-    'Blockbook read unavailable'
-  );
+  const rejected = expect(pending).rejects.toMatchObject({
+    code: 'UTXO_FUNDING_UNAVAILABLE',
+  });
   await jest.advanceTimersByTimeAsync(7_000);
   await rejected;
   expect(transport).toHaveBeenCalledTimes(4);

@@ -7565,8 +7565,22 @@ export function createKeyringRuntimeFactory(
                 (selected.type === 'HDAccount' && parsed.kind !== 'account'))
               throw new KeyringRuntimeError('CANCELLED');
             check();
+            const owner = { chainId: network.chainId, slip44: network.slip44, genesisHash: network.genesisHash,
+              account: { id: selected.index, type: selected.type, xpub: identifier } };
+            const records = refresh === 'page' ? utxoRecords : undefined;
+            const readReplacementKinds = records && (async (txids: readonly string[]) => {
+              check();
+              const { utxoSubmissionUrl } = await import('../../../../source/wallet/utxoSignedBinding.ts');
+              check();
+              return records.activityReplacementKinds(
+                { keyring: transactionRecordKeyring(ring, check), assertCurrent: check },
+                owner, utxoSubmissionUrl(network.endpoint), txids,
+              );
+            });
             const result = await read(Object.freeze({ context: expected, identifier: parsed.identifier,
-              isAccount: parsed.kind === 'account', registration: network, assertCurrent: assertScope }), signal, check);
+              isAccount: parsed.kind === 'account', registration: network, assertCurrent: assertScope,
+              ...(readReplacementKinds ? { readReplacementKinds } : {}),
+            }), signal, check);
             await dataBinding(captured, check);
             if (refresh === 'page') reconcilePublicUtxo(network, { id: selected.index, type: selected.type, xpub: identifier }, assertScope);
             return result;

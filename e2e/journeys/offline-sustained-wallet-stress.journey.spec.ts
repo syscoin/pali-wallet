@@ -473,7 +473,18 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
     if (historyDetailPositiveControlRequests === 0) {
       // Prove the observer sees a real detail request, once, after verifying
       // that merely displaying the list requested no per-row full payloads.
-      await latestRow.locator('svg.cursor-pointer').last().click();
+      await latestRow
+        .getByRole('button', {
+          name: en.transactions.transactionOptions,
+          exact: true,
+        })
+        .click();
+      await latestRow
+        .getByRole('menuitem', {
+          name: en.transactions.seeDetails,
+          exact: true,
+        })
+        .click();
       await expect(page).toHaveURL(/#\/home\/details/);
       await expect
         .poll(detailRequests, { timeout: 5000 })

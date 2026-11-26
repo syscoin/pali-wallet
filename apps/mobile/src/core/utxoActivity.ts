@@ -16,6 +16,7 @@ import { parseSyscoinAssetGuid } from '../../../../source/shared/syscoinAssetIds
 import { getSyscoinActivityOperationAmount } from '../../../../source/shared/utxoTokenAmounts.ts';
 import { normalizeUtxoActivityParticipants } from '../../../../source/shared/utxoActivityParticipants.ts';
 import { assertJsonWorkBudget, measureJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
+import type { UtxoReplacementKind } from '../../../../source/wallet/utxoReplacement.ts';
 import { assertPublicWatchOnlyIdentifier } from '../../../../source/utils/watchOnlyIdentifier.ts';
 import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { assertBaseUnits } from './amounts.ts';
@@ -32,12 +33,13 @@ export type UtxoActivityRow = Readonly<{
   observedConfirmations: number; receivedUnits: string | null; spentUnits: string | null; netUnits: string | null;
   transactionFeeUnits: string | null; hasAssetData: boolean; zdag: boolean; assetAmount: UtxoActivityAssetAmount | null;
   nativeTransfer: Readonly<NonNullable<ReturnType<typeof getSyscoinNativeTransferAmount>>> | null;
+  replacementKind?: UtxoReplacementKind;
 }>;
 export type UtxoActivityPage = Readonly<{
   context: UtxoActivityContext; page: number; rows: readonly UtxoActivityRow[]; hasMore: boolean; emptyAccount: boolean;
 }>;
 /** Only the authority passes this private canonical source to its trusted reader. */
-export type UtxoActivitySource = Readonly<{ context: UtxoActivityContext; identifier: string; isAccount: boolean; registration?: UtxoNetwork; assertCurrent?: () => void; readSentry?: true }>;
+export type UtxoActivitySource = Readonly<{ context: UtxoActivityContext; identifier: string; isAccount: boolean; registration?: UtxoNetwork; assertCurrent?: () => void; readSentry?: true; readReplacementKinds?: (txids: readonly string[]) => Promise<ReadonlyMap<string, UtxoReplacementKind>> }>;
 export type UtxoActivityDetail = Readonly<{
   txid: string; row: UtxoActivityRow; from: readonly string[]; to: readonly string[];
   readSentryNode?: (signal: AbortSignal, assertCurrent: () => void) => Promise<SentryNodeObservation>;
@@ -208,7 +210,18 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
           !Array.isArray(raw.transactions) || raw.transactions.length > UTXO_ACTIVITY_LIMITS.pageSize) return fail();
       const totalPages = raw.totalPages === undefined || raw.totalPages === -1 ? null : readHistoryCount(raw.totalPages);
       if (raw.totalPages !== undefined && raw.totalPages !== -1 && totalPages === null) return fail();
-      const rows = Object.freeze(raw.transactions.map((tx) => projectTransaction(tx, network.chainId)));
+      const projected = raw.transactions.map((tx) => projectTransaction(tx, network.chainId));
+      let replacementKinds: ReadonlyMap<string, UtxoReplacementKind> | undefined;
+      if (input.readReplacementKinds && projected.length) {
+        try {
+          replacementKinds = await input.readReplacementKinds(projected.filter(row => !row.hasAssetData).map(row => row.txid));
+        } catch { /* Optional local labels must not discard indexed rows. */ }
+      }
+      check();
+      const rows = Object.freeze(replacementKinds?.size ? projected.map(row => {
+        const replacementKind = replacementKinds.get(row.txid);
+        return replacementKind ? Object.freeze({ ...row, replacementKind }) : row;
+      }) : projected);
       const result = Object.freeze({ context: owner, page, rows,
         hasMore: totalPages === null ? raw.transactions.length === UTXO_ACTIVITY_LIMITS.pageSize : page < totalPages,
         emptyAccount: rows.length === 0 && readHistoryCount(raw.txs) === 0 && readHistoryCount(raw.unconfirmedTxs) === 0 });
@@ -269,7 +282,8 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
       });
       check();
       const merged = mergeAccountSummaryWithFullTransaction(summary, full, accepted.observation);
-      const row = projectTransaction(merged, network.chainId);
+      const projected = projectTransaction(merged, network.chainId);
+      const row = request.row.replacementKind ? Object.freeze({ ...projected, replacementKind: request.row.replacementKind }) : projected;
       const raw = { from: getSendingAddresses(merged), to: getReceivingAddresses(merged) };
       assertJsonWorkBudget(raw, 32768, 4, 2048);
       if (isAccount && (raw.from.includes(identifier) || raw.to.includes(identifier))) return fail('INVALID');
