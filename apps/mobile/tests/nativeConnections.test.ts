@@ -28,6 +28,7 @@ import axios from 'axios';
 import { NativeConnectionsController } from '../src/connections/controller.ts';
 import type { NativeConnectionHost } from '../src/connections/host.ts';
 import { recordNativeConnectionSubmissionFailure } from '../src/connections/transactionRuntime.ts';
+import { EvmTransferReadError } from '../src/custody/evmFeeContracts.ts';
 import type {
   WalletConnectTransportEvent,
   WalletConnectRequest,
@@ -913,7 +914,8 @@ function fixture(
     onPermissionPublication(callback: typeof permissionPublished) { permissionPublished = callback; },
     setPermissionSettlement(callback: typeof permissionSettlement) { permissionSettlement = callback; },
     failNextPermissionWrite() { failPermissionWrite = true; },
-    failTransactionPreparation() { preparationError = new Error('Estimate unavailable'); },
+    failTransactionPreparation(error = new Error('Estimate unavailable')) { preparationError = error; },
+    clearTransactionPreparationFailure() { preparationError = undefined; },
     failTransactionSubmission(error: Error, progress?: typeof smartBatchProgressBeforeFailure) {
       submissionError = error;
       smartBatchProgressBeforeFailure = progress;
@@ -3277,15 +3279,59 @@ test('a transaction estimate failure remains visible without authorizing or repo
   const f = await connectedFixture();
   try {
     f.failTransactionPreparation();
-    const review = await messageRequest(f, 'eth_sendTransaction', [{ data: '0x6000' }]);
+    const to = '0x' + '22'.repeat(20);
+    const data = new Interface(['function approve(address,uint256)']).encodeFunctionData('approve', [ADDRESS, 7]);
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ to, input: data }]);
     assert.ok(review?.kind === 'transaction');
     assert.equal(review.error, 'TRANSACTION_UNAVAILABLE');
+    assert.deepEqual(review.requestedCall, { to, data, value: '0' });
+    assert.equal(review.transaction, null);
+    assert.equal(review.approval?.standardVerified, false);
     assert.equal(review.busy, false);
     assert.equal(f.transactions.length, 0);
     assert.equal(f.responses.length, 0);
     await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
     await f.view.rejectRequest(review.id);
     assert.equal(f.responses.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('retrying an unavailable initial RPC read only refreshes the same WalletConnect request', async () => {
+  const f = await connectedFixture();
+  try {
+    f.failTransactionPreparation(new EvmTransferReadError('UNAVAILABLE'));
+    const to = '0x' + '22'.repeat(20);
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ to, value: '0x9' }]);
+    assert.ok(review?.kind === 'transaction' && review.retryPreparation && !review.error);
+    assert.deepEqual(review.requestedCall, { to, value: '9', data: '0x' });
+    f.clearTransactionPreparationFailure();
+    await f.view.approveRequest(review.id, review.revision, false);
+    const fresh = f.view.getSnapshot().signingReview;
+    assert.ok(fresh?.kind === 'transaction' && fresh.transaction && !fresh.retryPreparation);
+    assert.equal(fresh.id, review.id);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.transactions.length, 0);
+    assert.equal(f.responses.length, 0);
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
+    await f.view.rejectRequest(fresh.id);
+    assert.equal(f.responses.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('a recovered RPC that reports insufficient funds stops offering fee retries', async () => {
+  const f = await connectedFixture();
+  try {
+    f.failTransactionPreparation(new EvmTransferReadError('UNAVAILABLE'));
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ data: '0x6000' }]);
+    assert.ok(review?.kind === 'transaction' && review.retryPreparation);
+    f.failTransactionPreparation(new EvmTransferReadError('INSUFFICIENT_BALANCE'));
+    await f.view.approveRequest(review.id, review.revision, false);
+    const stopped = f.view.getSnapshot().signingReview;
+    assert.ok(stopped?.kind === 'transaction' && stopped.insufficientBalance && !stopped.retryPreparation);
+    assert.equal(stopped.error, 'TRANSACTION_UNAVAILABLE');
+    await assert.rejects(f.view.approveRequest(stopped.id, stopped.revision, false));
+    assert.equal(f.transactions.length, 0);
+    await f.view.rejectRequest(stopped.id);
   } finally { await f.controller.dispose(); }
 });
 

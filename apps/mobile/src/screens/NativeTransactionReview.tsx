@@ -100,10 +100,11 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
     return () => subscription.remove();
   }, [controller, review.id]);
 
-  const transaction = review.transaction;
+  const preparationFailed = review.error === 'TRANSACTION_UNAVAILABLE';
+  const transaction = review.transaction ?? (preparationFailed || retryPreparation ? review.requestedCall : null);
   const transfer = transaction ? resolveAssetTransferDisplay({ data: transaction.data, contract: transaction.to, transfer: review.assetTransfer }) : null;
   const siteWarning = review.verification.isScam || review.verification.validation !== 'VALID';
-  const prepared = transaction !== null && review.maximumFeeUnits !== null && review.maximumTotalUnits !== null;
+  const prepared = review.transaction !== null && review.maximumFeeUnits !== null && review.maximumTotalUnits !== null;
   const comparison = review.feeComparison;
   const showFeeChoices =
     review.feeChoice === null &&
@@ -149,6 +150,7 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
   const showError = review.error && review.error !== 'SITE_MISMATCH' &&
     !(review.error === 'BLOCKED_SITE' && review.verification.isScam);
   const errorText = retryPreparation ? t('mobile.dappConsent.transactionReview.transactionRetryAvailable')
+    : preparationFailed && review.insufficientBalance ? t('send.insufficientFunds')
     : showError && review.error ? reviewErrors[review.error] : null;
   const progress = !review.busy || notSent || batch?.phase === 'unknown' ? null
     : review.dispatched || batch?.phase === 'complete' ? t('mobile.dappConsent.transactionReview.returningResult')
@@ -156,13 +158,16 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
     : !transaction || retryPreparation || batch?.phase === 'preparing' ? t('mobile.dappConsent.transactionReview.preparingTransaction')
     : t('mobile.dappConsent.messageReview.pleaseWait');
   const amount = (units: string) => `${formatBaseUnits(units, review.decimals)} ${review.symbol}`;
+  const feeLabel = prepared && !retryPreparation && !preparationFailed
+    ? amount(review.maximumFeeUnits!)
+    : t(review.busy ? 'mobile.dappConsent.transactionReview.calculating' : 'send.feeUnavailable');
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.container}><KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen scrollResetKey={`${review.id}:${submitted ? 'result' : editingApproval ? 'edit' : 'review'}`} footer={<>
     {progress && <View style={s.progress}>
       <ActivityIndicator color={colors.blue} accessible={false} />
       <Text accessibilityLiveRegion="polite">{progress}</Text>
     </View>}
-    {ledger.showConnect && !submitted && !notSent && !retryPreparation && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}
+    {ledger.showConnect && !review.error && !submitted && !notSent && !retryPreparation && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}
     <View style={s.actions}>
     <Button title={submitted || notSent || review.broadcastHash ? t('buttons.close') : t('buttons.reject')} variant="secondary" disabled={notSent && review.busy} onPress={close} style={s.action} />
     {!submitted && !notSent && <Button title={review.needsAccountSwitch ? t('mobile.dappConsent.messageReview.switchAccount') : retryPreparation ? t('mobile.connections.tryAgain') : retry ? t('mobile.dappConsent.transactionReview.retryCall', { index: batch!.index + 1, count: batch!.calls.length }) : batch ? t('mobile.dappConsent.transactionReview.confirmCall', { index: batch.index + 1, count: batch.calls.length }) : t('buttons.confirm')}
@@ -180,7 +185,7 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
     {siteWarning && <DappSiteStatus verification={review.verification} />}
     {errorText && batch?.phase !== 'unknown' && (
       <View accessibilityRole="alert" accessibilityLiveRegion="polite">
-        <Notice title={submitted ? t('mobile.dappConsent.transactionReview.checkTransactionStatus') : t('mobile.dappConsent.transactionReview.transactionUnavailable')} body={errorText} />
+        <Notice tone="amber" compact title={submitted ? t('mobile.dappConsent.transactionReview.checkTransactionStatus') : t('mobile.dappConsent.transactionReview.transactionUnavailable')} body={errorText} />
       </View>
     )}
     {retry && (
@@ -218,8 +223,8 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
         {transfer?.from && <View style={s.fact}><Text style={s.factLabel}>{t('assetTransfer.owner')}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.from}</Text></View>}
         {transfer && transaction?.value !== '0' && <View style={s.fact}><Text style={s.factLabel}>{t('mobile.dappConsent.transactionReview.alsoSending')}</Text><Text style={[s.factValue, s.factText]}>{amount(transaction!.value)}</Text></View>}
         <View style={s.fact}><Text style={s.factLabel}>{t('transactions.replay.network')}</Text><Text style={[s.factValue, s.factText]}>{t('mobile.dappConsent.transactionReview.networkChain', { network: review.networkLabel, chainId: review.chainId })}</Text></View>
-        <View style={s.fact}><Text style={s.factLabel}>{t('transactions.replay.maximumFee')}</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumFeeUnits === null ? t('mobile.dappConsent.transactionReview.calculating') : amount(review.maximumFeeUnits)}</Text></View>
-        <View style={[s.fact, s.lastFact]}><Text style={s.factLabel}>{transfer || transaction?.data !== '0x' ? t('mobile.dappConsent.transactionReview.maximumDebit', { symbol: review.symbol }) : t('privacy.deposit.total')}</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumTotalUnits === null ? t('mobile.dappConsent.transactionReview.calculating') : amount(review.maximumTotalUnits)}</Text></View>
+        <View style={s.fact}><Text style={s.factLabel}>{t('transactions.replay.maximumFee')}</Text><Text selectable style={[s.factValue, s.factText]}>{feeLabel}</Text></View>
+        {!preparationFailed && !retryPreparation && review.maximumTotalUnits !== null && <View style={[s.fact, s.lastFact]}><Text style={s.factLabel}>{transfer || transaction?.data !== '0x' ? t('mobile.dappConsent.transactionReview.maximumDebit', { symbol: review.symbol }) : t('privacy.deposit.total')}</Text><Text selectable style={[s.factValue, s.factText]}>{amount(review.maximumTotalUnits)}</Text></View>}
       </Card>
     {transaction && <>
       {showFeeChoices && comparison && (

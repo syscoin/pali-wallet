@@ -216,6 +216,23 @@ for (const kind of ['erc20', 'erc721', 'unknown'] as const) test(`dapp ${kind} t
   } finally { f.close(); }
 });
 
+test('failed fee preparation keeps the requested recipient visible and removes the loading and device prompts', () => {
+  const f = fixture('transaction');
+  try {
+    const recipient = '0x' + '34'.repeat(20);
+    Object.assign(f.review, { transaction: null, maximumFeeUnits: null, maximumTotalUnits: null,
+      error: 'TRANSACTION_UNAVAILABLE', requestedCall: { to: recipient, data: '0x', value: '1' } });
+    const nodes = f.render();
+    const labels = nodes.flatMap(node => node.children);
+    assert(labels.includes(recipient));
+    assert(labels.includes('Fee unavailable'));
+    assert(!labels.includes('Calculating…'));
+    assert(!nodes.some(node => node.type === 'Button' && node.props.title === 'Connect Ledger'));
+    assert(nodes.some(node => node.type === 'Button' && node.props.title === 'Confirm' && node.props.disabled));
+    assert(nodes.some(node => node.type === 'Button' && node.props.title === 'Reject' && !node.props.disabled));
+  } finally { f.close(); }
+});
+
 test('unknown contract call identifies native value separately from possible asset effects', () => {
   const f = fixture('transaction');
   try {

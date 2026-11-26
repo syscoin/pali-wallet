@@ -31,6 +31,7 @@ const transferData = transferKind === 'erc20' ? transferAbi.encodeFunctionData('
   : transferKind === 'erc721' ? transferAbi.encodeFunctionData('safeTransferFrom', ['0x2222222222222222222222222222222222222222', spender, '42'])
   : transferKind === 'erc1155' ? transferAbi.encodeFunctionData('safeBatchTransferFrom', ['0x2222222222222222222222222222222222222222', spender, ['7', '42'], ['2', '3'], '0x']) : '0xabcdef';
 const transferValue = transferKind === 'unknown' ? '1234567890000000' : transferKind ? '0' : '1234567890123456789012345';
+const missingQuote = query.has('preparing') || query.has('fee-unavailable');
 const initialReview: NativeTransactionReview = {
   feeComparison: query.has('fees')
     ? {
@@ -46,7 +47,8 @@ const initialReview: NativeTransactionReview = {
   appName: 'Example app', origin: 'https://example.invalid', accountLabel: 'Savings',
   address: '0x2222222222222222222222222222222222222222', networkLabel: knownUsdc ? 'zkSYS Tanenbaum Testnet' : 'Custom network',
   chainId, symbol: knownUsdc ? 'TSYS' : 'COIN', decimals: 18, expiresAt: Date.now() + 300000,
-  transaction: query.has('preparing') ? null : {
+  requestedCall: query.has('fee-unavailable') ? { to: tokenContract, data: transferData, value: transferValue } : undefined,
+  transaction: missingQuote ? null : {
     type: 2, from: '0x2222222222222222222222222222222222222222',
     to: query.has('deployment') ? null : tokenContract,
     chainId, value: transferValue, gasLimit: '25200',
@@ -54,10 +56,10 @@ const initialReview: NativeTransactionReview = {
     data: transferKind ? transferData : approvalKind ? approvalData : query.has('large-data') ? '0x' + 'ab'.repeat(8192) + 'cd' : '0xabcdef',
     accessList: [{ address: '0x4444444444444444444444444444444444444444', storageKeys: ['0x' + '5'.repeat(64)] }],
   },
-  maximumFeeUnits: query.has('preparing') ? null : '252000',
-  maximumTotalUnits: query.has('preparing') ? null : (BigInt(transferValue) + 252000n).toString(),
-  ...(transferKind ? { assetTransfer: decodeAssetTransfer(transferData, tokenContract, transferMetadata) } : {}),
-  error: query.has('invalid-origin') ? 'SITE_MISMATCH' : query.has('uncertain') ? 'DELIVERY_UNCERTAIN' : null,
+  maximumFeeUnits: missingQuote ? null : '252000',
+  maximumTotalUnits: missingQuote ? null : (BigInt(transferValue) + 252000n).toString(),
+  ...(transferKind && !missingQuote ? { assetTransfer: decodeAssetTransfer(transferData, tokenContract, transferMetadata) } : {}),
+  error: query.has('invalid-origin') ? 'SITE_MISMATCH' : query.has('uncertain') ? 'DELIVERY_UNCERTAIN' : query.has('fee-unavailable') ? 'TRANSACTION_UNAVAILABLE' : null,
   verification: { validation: query.has('invalid-origin') ? 'INVALID' : 'VALID', isScam: false },
   busy: query.has('preparing') || query.has('broadcasting'), needsAccountSwitch: query.has('switch'),
   dispatched: query.has('uncertain'),
