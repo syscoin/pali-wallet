@@ -652,6 +652,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
 
     let rawTransactions: IEvmTransactionResponse[] = [];
+    let placementUpdates: IEvmTransactionResponse[] = [];
     const isSmartAccount = Boolean((currentAccount as any).isSmartAccount);
     let apiSucceeded = false;
     let explorerHasMore: boolean | undefined;
@@ -767,7 +768,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           const pendingTxPromises = pendingTxs.map(async (pendingTx: any) => {
             try {
               check();
-              let orphaned = false;
               if (Number(pendingTx.blockNumber) > 0 && pendingTx.blockHash) {
                 const header = await getBlockOnce(
                   Number(pendingTx.blockNumber)
@@ -782,7 +782,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                     pendingTx.blockHash.toLowerCase()
                 )
                   return null;
-                orphaned = true;
+                // Publish the disproved placement now. The next pending read
+                // can establish a new one independently of this header.
+                return markEvmHistoryOrphaned(pendingTx);
               }
               const tx = await web3Provider.getTransaction(pendingTx.hash);
               check();
@@ -846,7 +848,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                     isError: isSuccess === null ? null : isSuccess ? '0' : '1',
                   };
                 } else {
-                  if (orphaned) return markEvmHistoryOrphaned(pendingTx);
                   // Still pending
                   return {
                     ...tx,
@@ -863,8 +864,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                   };
                 }
               }
-              if (orphaned && tx === null)
-                return markEvmHistoryOrphaned(pendingTx);
             } catch (error) {
               console.error(
                 `[pollingEvmTransactions] Error fetching pending tx ${pendingTx.hash}:`,
@@ -875,15 +874,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           });
 
           const updatedPendingTxs = await Promise.all(pendingTxPromises);
-          const validUpdatedTxs = updatedPendingTxs.filter((tx) => tx !== null);
-
-          // Merge the individually fetched pending transactions with the block scan results
-          if (validUpdatedTxs.length > 0) {
-            rawTransactions = [
-              ...rawTransactions,
-              ...(validUpdatedTxs as unknown as IEvmTransactionResponse[]),
-            ];
-          }
+          placementUpdates = updatedPendingTxs.filter(
+            (tx) => tx !== null
+          ) as unknown as IEvmTransactionResponse[];
         }
       }
     }
@@ -917,7 +910,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     // Process all transactions consistently, regardless of source (API or RPC)
     check();
     const processedTransactions = validateAndManageUserTransactions(
-      rawTransactions,
+      // Smart history also refreshes confirmations from stored rows. Apply
+      // checked placements last so those copies cannot revive an orphan.
+      [...rawTransactions, ...placementUpdates],
       incompleteHistory ? undefined : pendingHashes
     ) as IEvmTransactionResponse[];
     if (explorerHasMore !== undefined)

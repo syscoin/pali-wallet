@@ -204,13 +204,21 @@ for (const phase of ['submitted', 'confirmed'] as const) {
       header = hash(100);
       evidence = undefined;
       t.mock.timers.tick(15_000); await flush();
-      assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, original.retainedObservation);
-      evidence = { status: 'missing', latestNonce: String(local.nonce) };
+      assert.equal(f.controller.getSnapshot().rows[0]?.orphanedPlacement, true);
+      assert.equal(f.controller.getSnapshot().rows[0]?.retainedObservation, undefined);
+      t.mock.timers.tick(300_000); await flush();
+      assert.equal(f.controller.getSnapshot().rows[0]?.orphanedPlacement, true);
+      const readCount = f.localReads.length;
       t.mock.timers.tick(15_000); await flush();
+      assert.equal(f.localReads.length, readCount, 'orphan switches to the older pending cadence');
+      evidence = { status: 'missing', latestNonce: String(local.nonce) };
+      t.mock.timers.tick(45_000); await flush();
       assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, evidence);
       evidence = { status: 'mined', outcome: 'confirmed', block: { hash: hash(100), number: '100' } };
-      t.mock.timers.tick(15_000); await flush();
+      t.mock.timers.tick(60_000); await flush();
       assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, evidence);
+      assert.equal(f.controller.getSnapshot().rows.length, 1);
+      assert.equal(f.controller.getSnapshot().rows[0]?.orphanedPlacement, undefined);
       assert.equal(f.controller.getSnapshot().rows[0]?.local, original.local);
       t.mock.timers.tick(15_000); await flush();
       assert.equal(headers.at(-1), '100', 're-inclusion moves the placement watch');
@@ -222,6 +230,71 @@ for (const phase of ['submitted', 'confirmed'] as const) {
     } finally { disconnect(); }
   });
 }
+
+for (const entry of ['detail', 'timer'] as const) {
+  test(`${entry} retires a disproved Smart placement before a pending receipt read can complete`, async t => {
+    const now = Date.now();
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now });
+    const local = { ...fixture().local(1, 'submitted'), createdAt: now, smartAccount: {
+      payer: OTHER, operations: [{ operationHash: hash(9), operationNonce: '0' }],
+    } };
+    const mined = { status: 'mined', outcome: 'confirmed', block: { hash: hash(99), number: '99' } } as const;
+    const held = deferred<EvmTransactionObservation>();
+    const f = fixture({ local });
+    const flags: (boolean | undefined)[] = [];
+    f.runtime.observeLocal = async (_local, guard, _signal, _observe, presentationOnly) => {
+      guard(); flags.push(presentationOnly);
+      return flags.length === 1 ? mined : held.promise;
+    };
+    const flush = async () => { for (let turn = 0; turn < 80; turn++) await Promise.resolve(); };
+    const disconnect = f.controller.connect();
+    try {
+      await flush();
+      if (entry === 'detail') f.controller.inspect(local.hash);
+      else t.mock.timers.tick(15_000);
+      await flush();
+      assert.deepEqual(flags, [false, true]);
+      assert.equal(f.controller.getSnapshot().rows[0]?.retainedObservation, undefined);
+      assert.equal(f.controller.getSnapshot().rows[0]?.orphanedPlacement, true);
+      f.source.change({ phase: 'locked', account: null });
+      held.resolve(mined); await flush();
+      assert.deepEqual(f.controller.getSnapshot().rows, []);
+    } finally { held.resolve(mined); disconnect(); }
+  });
+}
+
+test('same-scope refresh preserves a known orphan and terminal payer nonce evidence ends its retries', async t => {
+  const now = Date.now();
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now });
+  const local = { ...fixture().local(1), createdAt: now, smartAccount: {
+    payer: OTHER, operations: [{ operationHash: hash(9), operationNonce: '0' }],
+  } };
+  let evidence: EvmTransactionObservation | null = {
+    status: 'mined', outcome: 'confirmed', block: { hash: hash(99), number: '99' },
+  };
+  const f = fixture({ local, observeLocal: async () => {
+    if (!evidence) throw Error('Receipt unavailable');
+    return evidence;
+  } });
+  const flush = async () => { for (let turn = 0; turn < 80; turn++) await Promise.resolve(); };
+  const disconnect = f.controller.connect();
+  try {
+    await flush();
+    evidence = null;
+    t.mock.timers.tick(15_000); await flush();
+    t.mock.timers.tick(300_000); await flush();
+    assert.equal(f.controller.getSnapshot().rows[0]?.orphanedPlacement, true);
+    const reads = f.localReads.length;
+    await f.controller.refresh(); await flush();
+    assert.equal(f.localReads.length, reads + 1);
+    assert.equal(f.controller.getSnapshot().rows[0]?.orphanedPlacement, true);
+    evidence = { status: 'missing', latestNonce: String(local.nonce + 1) };
+    t.mock.timers.tick(60_000); await flush();
+    assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, evidence);
+    t.mock.timers.tick(120_000); await flush();
+    assert.equal(f.localReads.length, reads + 2);
+  } finally { disconnect(); }
+});
 
 test('a canonical reverted Smart receipt ends the recent confirmation watch', async t => {
   const now = Date.now();

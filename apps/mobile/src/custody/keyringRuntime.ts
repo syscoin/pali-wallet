@@ -7960,7 +7960,7 @@ export function createKeyringRuntimeFactory(
               if (type !== 'SmartAccount') return page;
               return { ...page, records: page.records.filter(local => !saved?.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')) };
             },
-            async observeLocal(local, assertCurrent, signal, sharedObserve) {
+            async observeLocal(local, assertCurrent, signal, sharedObserve, presentationOnly) {
               const { hash, chainId, address, walletFingerprint } = local;
               const { scope, guard, type } = await activityContext(assertCurrent);
               if (chainId !== scope.network.chainId || address !== scope.address || walletFingerprint !== scope.walletFingerprint || local.accountId !== scope.accountId)
@@ -7978,6 +7978,7 @@ export function createKeyringRuntimeFactory(
                 const observation = await observeSmartAccountOperations({ chainId, hash, account: address, nonce: record.nonce, ...record.smartAccount },
                   (method, params) => rpc.retirementRead(method, params, signal, guard), guard);
                 guard();
+                if (presentationOnly) return observation;
                 const phase = getObservedEvmTerminalPhase(observation, record.nonce);
                 // Archive only durable activity facts. The live projection also
                 // carries replay/navigation hints that are not storage fields.

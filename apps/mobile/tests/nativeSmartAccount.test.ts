@@ -2516,6 +2516,11 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     assert.equal(payerView.locals[0]!.phase, payerBefore.locals[0]!.phase);
     await f.change({ kind: 'select', id: 'smart:60:0' });
     f.reorg();
+    const transient = await f.runtime.activity!.observeLocal!(row, () => undefined, new AbortController().signal, undefined, true);
+    assert.equal(transient.status, 'missing');
+    const afterTransient = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.deepEqual(afterTransient.saved.archived, archived.saved.archived);
+    assert.equal(afterTransient.locals[0]!.phase, archived.locals[0]!.phase);
     const missing = await f.runtime.activity!.observeLocal!(row, () => undefined, new AbortController().signal);
     assert.equal(missing.status, 'missing');
     const pending = await f.runtime.activity!.load(() => undefined, new AbortController().signal);

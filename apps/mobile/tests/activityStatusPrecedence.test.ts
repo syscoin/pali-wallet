@@ -101,6 +101,26 @@ for (const canonical of ['missing', 'reverted', 'confirmed'] as const) {
   });
 }
 
+test('an orphaned Smart placement cannot regain Confirmed from stale retained, local, indexed or linked evidence', () => {
+  const screen = presentationFixture();
+  try {
+    const hash = '0x' + 'ab'.repeat(32), from = '0x' + '11'.repeat(20);
+    const block = { number: '80', hash: '0x' + 'cd'.repeat(32) };
+    const row = { hash, orphanedPlacement: true,
+      local: { address: from, recipient: from, amountUnits: '1', nonce: 3, phase: 'confirmed',
+        smartAccount: { payer: from, operations: [{ operationHash: hash, operationNonce: '0' }] } },
+      indexedStatus: 'confirmed', observation: { status: 'confirmed', block, from, to: from },
+      retainedObservation: { status: 'mined', outcome: 'confirmed', block },
+      smartAuthorizations: [{ observation: { kind: 'observed', success: true, transactionHash: hash, block } }],
+    };
+    for (const unavailable of [false, true]) {
+      const result = screen.render({ ...row, checking: !unavailable, unavailable },
+        { accountAddress: from, nativeSymbol: 'ETH', networkName: 'Ethereum', hideBalances: false }) as unknown as { status: string };
+      assert.equal(result.status, nativeTranslationFixture.nativeI18n.t('mobile.activityViews.nativeActivity.submissionUnconfirmed'));
+    }
+  } finally { screen.close(); }
+});
+
 test('privacy Activity labels the operation and omits its pool denomination when balances are hidden', () => {
   const screen = presentationFixture();
   try {

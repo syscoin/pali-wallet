@@ -84,7 +84,8 @@ const statusTag = (row: ActivityRow) => {
   }
   // Smart receipt validation covers the inner operation. Its current result also
   // supersedes an indexed outer receipt or a previously inspected authorization.
-  if (!row.unavailable && row.local?.smartAccount && row.retainedObservation) {
+  if (row.orphanedPlacement && row.retainedObservation?.status !== 'missing') return 'unconfirmed';
+  if ((!row.unavailable || row.orphanedPlacement) && row.local?.smartAccount && row.retainedObservation) {
     const retained = row.retainedObservation;
     if (retained.status === 'mined') return retained.outcome;
     if (row.replacementStatus === 'replaced') return 'replaced';

@@ -165,9 +165,9 @@ export class AccountActivityController {
             const current = guarded(guard);
             return this.reads.run(signal, current, () => target.observeSmartAuthorization!(scope, hash, current, signal));
           } } : {}),
-          observeLocal: (record, guard, signal, observe) => {
+          observeLocal: (record, guard, signal, observe, presentationOnly) => {
             const current = guarded(guard);
-            return this.reads.run(signal, current, () => target.observeLocal!(record, current, signal, observe));
+            return this.reads.run(signal, current, () => target.observeLocal!(record, current, signal, observe, presentationOnly));
           },
         };
       }

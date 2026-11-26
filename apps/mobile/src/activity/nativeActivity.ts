@@ -102,7 +102,8 @@ export interface NativeActivityRuntime {
     record: LocalActivityRecord,
     guard: () => void,
     signal: AbortSignal,
-    observe?: (request: EvmObservationRequest) => Promise<EvmTransactionObservation>
+    observe?: (request: EvmObservationRequest) => Promise<EvmTransactionObservation>,
+    presentationOnly?: boolean
   ): Promise<EvmTransactionObservation>;
   saveCache(
     scope: EvmActivityReadScope,
@@ -129,6 +130,7 @@ export type ActivityRow = Readonly<{
   indexedStatus?: EvmSettlementStatus;
   zeroValueToken?: boolean;
   retainedObservation?: EvmTransactionObservation;
+  orphanedPlacement?: true;
   /** Current, scope-bound canonical sibling evidence; never persisted. */
   replacementStatus?: 'replaced';
   checking: boolean;
@@ -227,6 +229,7 @@ export class NativeActivity {
   private displays = new Map<string, EvmTransactionDisplayInfo>();
   private tokenEvents = new Map<string, Readonly<Record<string, unknown>>>();
   private assets: readonly EvmDisplayTokenMetadata[] = [];
+  private orphanedPlacements = new Set<string>();
   private retainedObservations = new Map<string, EvmTransactionObservation>();
   private retainedWork?: RetainedObservationWork;
   private cachedFallback = false;
@@ -359,6 +362,7 @@ export class NativeActivity {
     this.indexed.clear();
     this.displays.clear();
     this.retainedObservations.clear();
+    this.orphanedPlacements.clear();
     this.assets = [];
     this.cachedFallback = true;
   }
@@ -371,6 +375,7 @@ export class NativeActivity {
     const previousScope = this.scope;
     const previous = state.phase === 'ready' && state.revision === this.scopeRevision
       ? this.snapshot : null;
+    const previousOrphans = previous ? [...this.orphanedPlacements] : [];
     this.reset();
     const previousTransactions = previous?.rows.filter(row =>
       !row.authorizationOnly && row.indexed?.historySource !== EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending
@@ -398,6 +403,7 @@ export class NativeActivity {
       if (!previousScope || previousScope.key !== scope.key || previousScope.sourceId !== scope.sourceId ||
           previousScope.network.registrationHash !== scope.network.registrationHash)
         this.refreshingRows = null;
+      else for (const hash of previousOrphans) this.orphanedPlacements.add(hash);
       this.scope = scope;
       this.pendingCursor = olderRetained && runtime.loadSavedPending ? undefined : null;
       this.scopeRevision = revision;
@@ -685,6 +691,7 @@ export class NativeActivity {
               this.locals.delete(stale);
               this.pagedLocals.delete(stale);
               this.retainedObservations.delete(stale);
+              this.orphanedPlacements.delete(stale);
               const canRebase = !rebased;
               rebased = true;
               return canRebase;
@@ -836,7 +843,7 @@ export class NativeActivity {
       // Presentation only: a healthy same-scope refresh need not erase its last
       // display while hash-only cache hints load. Fresh facts always replace it.
       if (previous && !this.freshCandidates.has(row.hash) && !this.observations.has(row.hash) &&
-          !this.retainedObservations.has(row.hash) && !this.unavailable.has(row.hash) &&
+          !this.retainedObservations.has(row.hash) && !this.orphanedPlacements.has(row.hash) && !this.unavailable.has(row.hash) &&
           JSON.stringify(row.local) === JSON.stringify(previous.local))
         return { ...previous, ...(previous.smartAuthorizations ? { smartAuthorizations: undefined } : {}), checking: this.checking.has(row.hash) };
       // An indexer describes the outer payer transaction; this row represents its verified inner operation.
@@ -857,6 +864,7 @@ export class NativeActivity {
           !display.amountUnavailable &&
           /^0(?:\.0*)?$/.test(String(display.displayValue)),
         retainedObservation: this.retainedObservations.get(row.hash),
+        ...(this.orphanedPlacements.has(row.hash) ? { orphanedPlacement: true as const } : {}),
         checking: this.checking.has(row.hash),
         unavailable: this.unavailable.has(row.hash),
       };
@@ -964,6 +972,18 @@ export class NativeActivity {
     return this.receipts.observe ? (request: EvmObservationRequest) => this.receipts.observe!(
       request, signal, guard, scope.network, this.receiptScope(scope, generation)) : undefined;
   }
+  private invalidatePlacement(hash: string) {
+    this.orphanedPlacements.add(hash);
+    this.retainedWork?.seen.add(hash);
+    this.retainedObservations.delete(hash);
+    this.renderRows();
+  }
+  private acceptObservation(hash: string, observation: EvmTransactionObservation) {
+    this.retainedObservations.set(hash, observation);
+    if (observation.status === 'mined' && this.orphanedPlacements.delete(hash) && observation.outcome === 'confirmed')
+      this.retainedWork?.confirmedUntil.set(hash, Date.now() + RECENT_SUBMISSION_MS);
+    this.unavailable.delete(hash);
+  }
   private hydrate(hash?: string) {
     if (hash && !this.checking.has(hash) && !this.hydration.some(request => request.hash === hash))
       this.hydration.push({ hash });
@@ -998,17 +1018,20 @@ export class NativeActivity {
           if (local.smartAccount && prior?.status === 'mined' && prior.outcome === 'confirmed' && this.receipts.blockHashAt) {
             const header = await this.receipts.blockHashAt(prior.block.number, scope.network, signal, guard);
             guard();
+            if (this.retainedObservations.get(hash) !== prior) return;
             if (header === prior.block.hash) {
               this.unavailable.delete(hash);
               return;
             }
+            this.invalidatePlacement(hash);
           }
+          const before = this.retainedObservations.get(hash);
           // The signed record already supplies the envelope. Use one owned
           // observation for status, without fetching the same receipt again.
-          const observation = await runtime.observeLocal(local, guard, signal, this.retainedObserver(scope, generation, signal, guard));
+          const observation = await runtime.observeLocal(local, guard, signal, this.retainedObserver(scope, generation, signal, guard), this.orphanedPlacements.has(hash));
           guard();
-          this.retainedObservations.set(hash, observation);
-          this.unavailable.delete(hash);
+          if (this.retainedObservations.get(hash) !== before) return;
+          this.acceptObservation(hash, observation);
           const operations = local.smartAccount?.operations;
           if (!local.operation && !local.cancellationRetry && operations?.length === 1 &&
               observation.status === 'mined' && observation.outcome === 'reverted' && runtime.loadTarget) {
@@ -1056,6 +1079,7 @@ export class NativeActivity {
           if (generation === this.generation && this.checking.get(hash) === detail) {
             this.checking.delete(hash);
             this.renderRows();
+            if (this.orphanedPlacements.has(hash)) this.observeRetained();
           }
           this.hydrate();
         });
@@ -1087,7 +1111,7 @@ export class NativeActivity {
     };
     // Recent Smart Account confirmations may have been archived before Activity opened.
     const locals = [...this.locals.values()];
-    const candidates = locals.filter((local) => !this.pagedLocals.has(local.hash) &&
+    const candidates = locals.filter((local) => this.orphanedPlacements.has(local.hash) || !this.pagedLocals.has(local.hash) &&
       (['signed', 'attempted', 'submitted'].includes(local.phase) ||
        local.smartAccount && local.phase === 'confirmed' && recentlySubmitted(local))
     );
@@ -1099,12 +1123,15 @@ export class NativeActivity {
       work.seen.add(local.hash); work.queue.push(local);
     }
     const pending = () => [...this.locals.values()].filter(local => {
+      const observation = this.retainedObservations.get(local.hash);
+      const terminal = observation && getObservedEvmTerminalPhase(observation, local.nonce);
+      if (terminal === 'nonce-consumed' || terminal === 'reverted') return false;
+      if (this.orphanedPlacements.has(local.hash)) return true;
       if (this.pagedLocals.has(local.hash)) return false;
       if ((work.confirmedUntil.get(local.hash) ?? 0) > Date.now()) return true;
       if (local.phase !== 'attempted' && local.phase !== 'submitted' ||
           this.observations.get(local.hash)?.block) return false;
-      const observation = this.retainedObservations.get(local.hash);
-      return !observation || !getObservedEvmTerminalPhase(observation, local.nonce);
+      return !terminal;
     });
     const pump = () => {
       const count = Math.min(2 - work.workers, work.queue.length);
@@ -1149,9 +1176,12 @@ export class NativeActivity {
             const currentHash = await header;
             guard();
             if (currentHash === prior.block.hash || this.retainedObservations.get(local.hash) !== prior) return;
+            this.invalidatePlacement(local.hash);
           }
-          const observation = await runtime.observeLocal!(local, guard, lifetime, observe);
+          const before = this.retainedObservations.get(local.hash);
+          const observation = await runtime.observeLocal!(local, guard, lifetime, observe, this.orphanedPlacements.has(local.hash));
           guard();
+          if (this.retainedObservations.get(local.hash) !== before) return;
           if (local.smartAccount) {
             const phase = getObservedEvmTerminalPhase(observation, local.nonce);
             if (phase === 'confirmed' && !work.confirmedUntil.has(local.hash) &&
@@ -1162,8 +1192,7 @@ export class NativeActivity {
               work.confirmedUntil.delete(local.hash);
             }
           }
-          this.retainedObservations.set(local.hash, observation);
-          this.unavailable.delete(local.hash);
+          this.acceptObservation(local.hash, observation);
         } catch {
           try { guard(); } catch { return; }
           // A concurrent successful detail read still owns its current evidence.
