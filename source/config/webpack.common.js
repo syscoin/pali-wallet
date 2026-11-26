@@ -591,24 +591,23 @@ module.exports = {
         },
         // Extract only modules already duplicated across lazy UI chunks.
         transactionDetails: {
-          test: /[\\/]source[\\/](?:components[\\/]TransactionDetails[\\/]|pages[\\/]Send[\\/]components[\\/])/,
+          test: /[\\/]source[\\/](?:components[\\/](?:TransactionDetails[\\/]|TransactionOptions[\\/]TransactionOptionsMenu\.tsx$)|pages[\\/]Send[\\/]components[\\/])/,
           chunks: 'async',
           name: 'transaction-details',
           minChunks: 2,
           enforce: true,
         },
-        // Home uses the labels without loading the full transaction review UI.
+        // Share labels and exact amount formatting across Activity, Details and fee reviews.
         transactionDisplay: {
-          test: /[\\/]source[\\/]utils[\\/]transactionDisplay\.ts$/,
+          test: /[\\/]source[\\/]utils[\\/](?:transactionDisplay|formatSyscoinValue|bigNumberString|syscoinAssetAmount)\.ts$/,
           chunks: 'async',
           name: 'transaction-display',
           minChunks: 2,
           enforce: true,
         },
-        // Activity and Details already ship copies of this cache and its work
-        // budget helper. Keep them lazy and leave the worker's initial copy.
+        // Activity and Details share their lazy UTXO cache and replacement review.
         utxoHistoryDetails: {
-          test: /[\\/]source[\\/](?:shared[\\/]utxoTransactionDetailCache\.ts|utils[\\/]requestPayloadBudget\.ts|pages[\\/]Home[\\/]Panel[\\/]components[\\/]Transactions[\\/]UTXO[\\/]utxoTransactionDetails\.ts)$/,
+          test: /[\\/]source[\\/](?:shared[\\/]utxoTransactionDetailCache\.ts|utils[\\/]requestPayloadBudget\.ts|pages[\\/]Home[\\/]Panel[\\/]components[\\/]Transactions[\\/]UTXO[\\/](?:utxoTransactionDetails\.ts|utxoReplacementNavigation\.ts|UtxoReplacementActions\.tsx))$/,
           chunks: 'async',
           name: 'utxo-history-details',
           minChunks: 2,

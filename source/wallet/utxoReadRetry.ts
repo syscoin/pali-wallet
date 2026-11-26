@@ -6,7 +6,7 @@ import {
   checkAborted,
 } from '../shared/boundedHttp.ts';
 
-class RetryableResponse extends Error {
+class RetryableBlockbookRead extends Error {
   readonly status: 429 | 503;
   constructor(status: 429 | 503) {
     super('Blockbook temporarily unavailable');
@@ -41,7 +41,8 @@ export async function fetchUtxoRead(
   init: RequestInit,
   assertCurrent: () => void,
   deadline = Date.now() + 12_000,
-  retry = true
+  retry = true,
+  retryNetworkFailure = false
 ): Promise<Response> {
   const signal = init.signal;
   if (
@@ -54,6 +55,7 @@ export async function fetchUtxoRead(
     throw new Error('Invalid Blockbook read request');
   const request = Object.freeze({ ...init, method: 'GET', signal });
   let notBefore = 0;
+  let retriedNetworkFailure = false;
   const check = () => {
     checkAborted(signal);
     assertCurrent();
@@ -83,15 +85,31 @@ export async function fetchUtxoRead(
           }
           if (Date.now() >= deadline)
             throw new Error('Blockbook read unavailable');
-          const pending = transport(url, request).then((response) => {
-            try {
+          const pending = transport(url, request).then(
+            (response) => {
+              try {
+                check();
+                return response;
+              } catch (error) {
+                cancelResponseBody(response);
+                throw error;
+              }
+            },
+            (error) => {
               check();
-              return response;
-            } catch (error) {
-              cancelResponseBody(response);
+              if (
+                retry &&
+                retryNetworkFailure &&
+                !retriedNetworkFailure &&
+                error instanceof TypeError
+              ) {
+                retriedNetworkFailure = true;
+                // Use a slot from the existing SDK backoff budget.
+                throw new RetryableBlockbookRead(503);
+              }
               throw error;
             }
-          });
+          );
           // A transport may synchronously abort before abortable can observe it.
           void pending.catch(() => undefined);
           const response = await abortable(pending, signal);
@@ -106,12 +124,12 @@ export async function fetchUtxoRead(
             cancelResponseBody(response);
             if (notBefore >= deadline)
               throw new Error('Blockbook read unavailable');
-            throw new RetryableResponse(response.status);
+            throw new RetryableBlockbookRead(response.status);
           }
           return response;
         } catch (error) {
-          // The SDK also matches error text. Only our actual HTTP statuses may retry.
-          if (error instanceof RetryableResponse) throw error;
+          // Only explicitly classified failures may reach the SDK retry policy.
+          if (error instanceof RetryableBlockbookRead) throw error;
           throw new Error('Blockbook read unavailable');
         }
       },

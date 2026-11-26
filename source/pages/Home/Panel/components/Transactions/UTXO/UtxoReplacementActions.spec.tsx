@@ -187,3 +187,125 @@ it('opens a hardware transaction in a standalone wallet tab without preparing or
     globalThis.chrome = previous;
   }
 });
+
+it('opens the same fee review from a scoped Activity row menu without signing early', async () => {
+  const user = userEvent.setup();
+  const scope = { account: 'account-a', network: 'network-a' };
+  const alert = { success: jest.fn(), info: jest.fn(), error: jest.fn() };
+  mockEmitter
+    .mockResolvedValueOnce({ cancel: false, speedUp: true })
+    .mockResolvedValueOnce({
+      kind: 'speed-up',
+      id: 'row-review',
+      validForMs: 90_000,
+      previousFeeSatoshis: '1000',
+      feeSatoshis: '1500',
+      outputs: [],
+    })
+    .mockResolvedValueOnce({ txid: replacement });
+  render(
+    <UtxoReplacementActions
+      txid={original}
+      currency="SYS"
+      menu={{ alert, scope, onDetails: jest.fn() }}
+    />
+  );
+  expect(mockEmitter).not.toHaveBeenCalled();
+  await user.click(
+    screen.getByRole('button', { name: 'transactions.transactionOptions' })
+  );
+  await user.click(
+    await screen.findByRole('menuitem', { name: 'header.speedUp' })
+  );
+  const dialog = within(
+    await screen.findByRole('dialog', { name: 'header.speedUp' })
+  );
+  expect(dialog.getByText('0.000015 SYS')).toBeVisible();
+  expect(mockEmitter).toHaveBeenLastCalledWith(
+    ['wallet', 'prepareUtxoReplacement'],
+    [original, 'speed-up', scope],
+    35_000,
+    false
+  );
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
+  await user.click(dialog.getByRole('button', { name: 'buttons.confirm' }));
+  expect(mockEmitter).toHaveBeenLastCalledWith(
+    ['wallet', 'confirmUtxoReplacement'],
+    ['row-review'],
+    65_000,
+    false
+  );
+  expect(alert.success).toHaveBeenCalledWith(
+    'transactions.utxoReplacement.submitted',
+    undefined,
+    expect.any(Function)
+  );
+  expect(screen.queryByText(replacement)).toBeNull();
+});
+
+it.each([true, false])(
+  'reports a failed row submission by toast and permits retry only when it was not broadcast (%s)',
+  async (transactionNotBroadcast) => {
+    const user = userEvent.setup();
+    const alert = { success: jest.fn(), info: jest.fn(), error: jest.fn() };
+    mockEmitter
+      .mockResolvedValueOnce({ cancel: true, speedUp: false })
+      .mockResolvedValueOnce({
+        kind: 'cancel',
+        id: 'row-review',
+        validForMs: 90_000,
+        previousFeeSatoshis: '1000',
+        feeSatoshis: '1500',
+        outputs: [],
+      })
+      .mockRejectedValueOnce({ transactionNotBroadcast, txid: replacement })
+      .mockResolvedValueOnce({ cancel: true, speedUp: false });
+    render(
+      <UtxoReplacementActions
+        txid={original}
+        currency="SYS"
+        menu={{
+          alert,
+          scope: { account: 'account', network: 'network' },
+          onDetails: jest.fn(),
+        }}
+      />
+    );
+    const pencil = screen.getByRole('button', {
+      name: 'transactions.transactionOptions',
+    });
+    await user.click(pencil);
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'buttons.cancel' })
+    );
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'buttons.confirm',
+      })
+    );
+    expect(screen.queryByText(replacement)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    if (transactionNotBroadcast) {
+      expect(alert.error).toHaveBeenCalledWith(
+        'transactions.utxoReplacement.unavailable',
+        undefined,
+        expect.any(Function)
+      );
+      await user.click(pencil);
+      expect(
+        await screen.findByRole('menuitem', { name: 'buttons.cancel' })
+      ).toBeVisible();
+    } else {
+      expect(alert.info).toHaveBeenCalledWith(
+        'transactions.replay.unknown',
+        undefined,
+        expect.any(Function)
+      );
+      await user.click(pencil);
+      expect(
+        screen.queryByRole('menuitem', { name: 'buttons.cancel' })
+      ).toBeNull();
+      expect(mockEmitter).toHaveBeenCalledTimes(3);
+    }
+  }
+);

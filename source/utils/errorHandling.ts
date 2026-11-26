@@ -1,4 +1,5 @@
 // Utility functions for handling transaction errors with specific messaging
+import { UTXO_FUNDING_UNAVAILABLE } from '../shared/utxoSendErrors';
 import {
   EVM_ASSET_REVIEW_MESSAGE,
   EVM_ASSET_REVIEW_REQUIRED,
@@ -17,8 +18,9 @@ import {
 import { sanitizeSyscoinError } from 'utils/syscoinErrorSanitizer';
 import { UTXO_SIGNING_CONTEXT_CHANGED } from 'utils/utxoSigningContext';
 
-export { isSmartAccountPrefundError } from 'utils/smartAccountErrors';
 import { isSmartAccountPayerPendingError } from './smartAccount/executionSimulationError';
+
+export { isSmartAccountPrefundError } from 'utils/smartAccountErrors';
 
 /**
  * Error detection utilities for Pali wallet
@@ -186,6 +188,13 @@ export const handleTransactionError = (
   sanitizeErrorMessage?: (errorInput: any) => string
 ): boolean => {
   const message = typeof error === 'string' ? error : error?.message;
+  if (
+    error?.code === UTXO_FUNDING_UNAVAILABLE &&
+    error?.transactionNotBroadcast === true
+  ) {
+    alert.error(t('send.utxoFundingUnavailable'));
+    return true;
+  }
   if (
     error?.code === EVM_SIGNED_STORAGE_FULL &&
     error?.transactionNotBroadcast === true

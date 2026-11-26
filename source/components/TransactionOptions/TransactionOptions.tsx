@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 
 import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../shared/evmHistory';
 import { isTransactionInBlock } from '../../shared/transactionBlockStatus';
-import { ExternalLinkSvg, TrashIconSvg } from 'components/Icon/Icon';
+import { TrashIconSvg } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -20,6 +20,10 @@ import {
 } from 'utils/transactions';
 import { ITransactionOptions } from 'utils/types';
 
+import {
+  TransactionOptionsMenu,
+  TransactionOptionsMenuItem,
+} from './TransactionOptionsMenu';
 import { useSmartAccountCancellation } from './useSmartAccountCancellation';
 import type { SmartAccountCancellationRequest } from '../../wallet/smartAccountCancellation';
 
@@ -28,16 +32,6 @@ const EditTxIcon = React.memo(() => (
   <Icon isSvg name="EditTx" className="text-base" />
 ));
 EditTxIcon.displayName = 'EditTxIcon';
-
-const ExternalLinkIcon = React.memo(() => (
-  <ExternalLinkSvg className="text-base text-brand-white" />
-));
-ExternalLinkIcon.displayName = 'ExternalLinkIcon';
-
-const SpeedUpIcon = React.memo(() => (
-  <Icon name="SpeedUp" isSvg className="text-base text-brand-white" />
-));
-SpeedUpIcon.displayName = 'SpeedUpIcon';
 
 const CancelIcon = React.memo(() => (
   <TrashIconSvg className="text-base text-brand-white" />
@@ -88,30 +82,11 @@ const CancelTransactionMenuItem = ({
   }, [checkLive, hash, account, network, retry]);
   if (checkLive && !canCancel) return null;
   return (
-    <Menu.Item disabled={busy}>
-      {({ active }) => (
-        <li
-          className={`${
-            active ? ACTIVE_ITEM_CLASS_NAME : ''
-          } ${CANCEL_ITEM_CLASS_NAME}`}
-          aria-disabled={busy}
-          onClick={() => {
-            if (!busy) onClick();
-          }}
-        >
-          <div className="w-5 mr-3">
-            <CancelIcon />
-          </div>
-          <span className={ITEM_TEXT_CLASS_NAME}>
-            {t(
-              retry
-                ? 'transactions.retrySmartAccountCancellation'
-                : 'buttons.cancel'
-            )}
-          </span>
-        </li>
+    <TransactionOptionsMenuItem disabled={busy} icon="cancel" onClick={onClick}>
+      {t(
+        retry ? 'transactions.retrySmartAccountCancellation' : 'buttons.cancel'
       )}
-    </Menu.Item>
+    </TransactionOptionsMenuItem>
   );
 };
 
@@ -382,115 +357,38 @@ const TransactionOptionsBase: React.FC<TransactionOptionsProps> = ({
 
   return (
     <>
-      <Menu
+      <TransactionOptionsMenu
         id="transaction-options"
-        as="div"
-        className="relative inline-block text-left"
+        pending={!mined}
+        onDetails={handleGoTxDetails}
+        onExplorer={explorer ? openTransactionOnExplorer : undefined}
       >
-        {({ open }) => (
-          <>
-            <Menu.Button
-              aria-label={t('transactions.transactionOptions')}
-              className="inline-flex justify-center w-full
-          hover:text-button-primaryhover text-white text-sm font-medium
-          hover:bg-opacity-30 rounded-full w-5"
-            >
-              <EditTxIcon />
-            </Menu.Button>
-
-            <div className="absolute right-0 z-10 h-[15rem]">
-              {open && (
-                <Menu.Items
-                  as="div"
-                  className={`p-4 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1
-                  max-w-[calc(100vw-2rem)] font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out transform opacity-100 scale-100 pointer-events-auto`}
-                >
-                  {!mined && (
-                    <h1 className="text-sm font-semibold text-brand-gray200 pb-2 px-2">
-                      {t('transactions.pendingTransaction')}
-                    </h1>
-                  )}
-                  <Menu.Item>
-                    {({ active }) => (
-                      <li
-                        className={`
-                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
-                    ${MENU_ITEM_CLASS_NAME}
-                    `}
-                        onClick={handleGoTxDetails}
-                      >
-                        <div className="w-5 mr-3">
-                          <ExternalLinkIcon />
-                        </div>
-                        <span className={ITEM_TEXT_CLASS_NAME}>
-                          {t('transactions.seeDetails')}
-                        </span>
-                      </li>
-                    )}
-                  </Menu.Item>
-                  {explorer && (
-                    <Menu.Item>
-                      {({ active }) => (
-                        <li
-                          className={`
-                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
-                    ${MENU_ITEM_CLASS_NAME}
-                    `}
-                          onClick={openTransactionOnExplorer}
-                        >
-                          <div className="w-5 mr-3">
-                            <ExternalLinkIcon />
-                          </div>
-                          <span className={ITEM_TEXT_CLASS_NAME}>
-                            {t('transactions.seeOnBlockExplorer')}
-                          </span>
-                        </li>
-                      )}
-                    </Menu.Item>
-                  )}
-                  {speedUpAvailable && (
-                    <Menu.Item>
-                      {({ active }) => (
-                        <li
-                          className={`
-                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
-                    ${MENU_ITEM_CLASS_NAME}
-                    `}
-                          onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
-                        >
-                          <div className="w-5 mr-3">
-                            <SpeedUpIcon />
-                          </div>
-                          <span className={ITEM_TEXT_CLASS_NAME}>
-                            {t('header.speedUp')}
-                          </span>
-                        </li>
-                      )}
-                    </Menu.Item>
-                  )}
-                  {!cancellationUnavailable && (
-                    <CancelTransactionMenuItem
-                      key={JSON.stringify([
-                        transaction.hash,
-                        scope.account,
-                        scope.network,
-                        mined,
-                        cancellationRetry?.operationHash,
-                      ])}
-                      busy={smartCancellation.busy}
-                      checkLive={mined || cancellationRetry !== undefined}
-                      hash={transaction.hash}
-                      onClick={() => handleOnClick(UpdateTxAction.Cancel)}
-                      retry={cancellationRetry !== undefined}
-                      scope={scope}
-                    />
-                  )}
-                </Menu.Items>
-              )}
-            </div>
-          </>
+        {speedUpAvailable && (
+          <TransactionOptionsMenuItem
+            icon="speed-up"
+            onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
+          >
+            {t('header.speedUp')}
+          </TransactionOptionsMenuItem>
         )}
-      </Menu>
+        {!cancellationUnavailable && (
+          <CancelTransactionMenuItem
+            key={JSON.stringify([
+              transaction.hash,
+              scope.account,
+              scope.network,
+              mined,
+              cancellationRetry?.operationHash,
+            ])}
+            busy={smartCancellation.busy}
+            checkLive={mined || cancellationRetry !== undefined}
+            hash={transaction.hash}
+            onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+            retry={cancellationRetry !== undefined}
+            scope={scope}
+          />
+        )}
+      </TransactionOptionsMenu>
       {smartCancellation.content}
     </>
   );

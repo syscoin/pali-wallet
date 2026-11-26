@@ -143,7 +143,28 @@ test('offline UTXO history: bridge value, native account change and pending deta
         ).toHaveCount(0);
     };
     const openDetails = async (id: string) => {
-      await row(id).locator('svg.cursor-pointer').last().click();
+      const activityRow = row(id);
+      if (id === pending.txid) {
+        await activityRow
+          .getByRole('button', {
+            name: en.transactions.transactionOptions,
+            exact: true,
+          })
+          .click();
+        await activityRow
+          .getByRole('menuitem', {
+            name: en.transactions.seeDetails,
+            exact: true,
+          })
+          .click();
+      } else {
+        await activityRow
+          .getByRole('button', {
+            name: en.notifications.clickToView,
+            exact: true,
+          })
+          .click();
+      }
       await expect(page).toHaveURL(/#\/home\/details/);
       await expect
         .poll(() => routes.reads.includes('/api/v2/tx/' + id))

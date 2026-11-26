@@ -9,9 +9,11 @@ import { getNetworkConfig } from '@sidhujag/sysweb3-network/cjs/networks.js';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import { signTrezorReplacementPsbt } from './trezorReplacementSigner';
+import { createOwnedUtxoBlockbookRead } from './utxoBlockbookReads';
 import {
   availableUtxoReplacementKinds,
   prepareUtxoReplacement,
+  readUtxoReplacementFee,
 } from './utxoReplacement';
 import { utxoSubmissionUrl, type UtxoSignedScope } from './utxoSignedBinding';
 
@@ -100,6 +102,56 @@ function fixture(
   };
   return { request, original, parent };
 }
+
+const replacementRead = (url: string, body: unknown, status = 200) =>
+  createOwnedUtxoBlockbookRead(
+    { kind: 'fee', url },
+    new AbortController().signal,
+    () => undefined,
+    async (input) => {
+      const response = new Response(JSON.stringify(body), { status });
+      Object.defineProperty(response, 'url', { value: input });
+      return response;
+    }
+  );
+
+it.each(['speed-up', 'cancel'] as const)(
+  'uses the verified replacement fee floor for %s when Blockbook quotes zero',
+  async (kind) => {
+    const { request } = fixture();
+    const { url } = request.scope.network;
+    const rate = await readUtxoReplacementFee(
+      url,
+      replacementRead(url, { result: '0' })
+    );
+    expect(rate).toBeUndefined();
+    const { review } = await prepareUtxoReplacement({ ...request, kind });
+    expect(review.feeSatoshis).toBe(review.minimumFeeSatoshis);
+    expect(BigInt(review.feeSatoshis)).toBeGreaterThan(BigInt(1000));
+    expect(request.fetchPreviousTransaction).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('keeps positive fee quotes and rejects malformed quotes, HTTP failures and mismatched scope', async () => {
+  const { url } = fixture().request.scope.network;
+  await expect(
+    readUtxoReplacementFee(url, replacementRead(url, { result: '0.00001024' }))
+  ).resolves.toBe(1e-8);
+  for (const body of [{}, { result: 0 }, { result: '0', error: 'backend' }]) {
+    await expect(
+      readUtxoReplacementFee(url, replacementRead(url, body))
+    ).rejects.toThrow('Invalid Blockbook fee quote');
+  }
+  await expect(
+    readUtxoReplacementFee(url, replacementRead(url, { result: '0' }, 400))
+  ).rejects.toThrow('Blockbook fee request failed');
+  await expect(
+    readUtxoReplacementFee(
+      url,
+      replacementRead('https://other.invalid', { result: '0' })
+    )
+  ).rejects.toThrow('Invalid owned Blockbook endpoint');
+});
 
 it('preserves the exact inputs, sequence, locktime and recipient while reducing verified change', async () => {
   const { request, original } = fixture();

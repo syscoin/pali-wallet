@@ -33,6 +33,7 @@ import {
 import { getTokenLogo } from 'utils/index';
 import { ellipsis } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import {
   getSyscoinActivityAssetLabel,
   getSyscoinTransactionTypeStyle,
@@ -48,7 +49,9 @@ import {
   translateTransactionType,
 } from 'utils/transactionDisplay';
 import { isTransactionInBlock } from 'utils/transactionUtils';
+import type { UtxoAcknowledgedReplacement } from 'utils/utxoAcknowledgedInputs';
 
+import { UtxoReplacementActions } from './UtxoReplacementActions';
 import {
   getCachedUtxoTransactionDetails,
   mergeAccountOwnershipFlags,
@@ -68,8 +71,12 @@ const mergeHistoryRows = (...lists: ITransactionInfoUtxo[][]) => {
 };
 
 const UtxoTransactionsListComponentBase = ({
+  locallyAcknowledged = false,
+  replacement,
   tx,
 }: {
+  locallyAcknowledged?: boolean;
+  replacement?: UtxoAcknowledgedReplacement;
   tx: ITransactionInfoUtxo;
 }) => {
   const { navigate, useCopyClipboard, alert } = useUtils();
@@ -81,6 +88,7 @@ const UtxoTransactionsListComponentBase = ({
   );
   const activeAssets = useSelector(selectActiveAccountAssets);
   const walletScope = useSelector(getWalletNavigationScope);
+  const explorer = useSelector(selectExplorerUrl);
   const isReplaced = useSelector(
     (state: RootState) =>
       !isTransactionInBlock(tx) &&
@@ -220,6 +228,18 @@ const UtxoTransactionsListComponentBase = ({
     sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
   }
 
+  const canOpenReplacementMenu =
+    /^[a-f0-9]{64}$/i.test(tx.txid) &&
+    !isConfirmed &&
+    !isTransactionInBlock(displayTransaction) &&
+    !isReplaced &&
+    !(
+      'isCanceled' in displayTransaction &&
+      displayTransaction.isCanceled === true
+    ) &&
+    !tokenOperation &&
+    (nativeDirection === 'sent' || (!nativeDirection && locallyAcknowledged));
+
   const handleGoTxDetails = () => {
     navigate('/home/details', {
       state: {
@@ -237,6 +257,15 @@ const UtxoTransactionsListComponentBase = ({
   return (
     <div className="flex py-2 w-full border-b border-dashed border-bkg-deepBlue hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg">
       <div className="flex flex-1 flex-col gap-1">
+        {replacement && (
+          <p className="text-xs font-medium">
+            {t(
+              replacement.kind === 'cancel'
+                ? 'transactions.cancellation'
+                : 'header.speedUp'
+            )}
+          </p>
+        )}
         <div className="flex items-center gap-1">
           <p className="text-xs font-mono">{ellipsis(tx.txid, 4, 14)}</p>
           <Tooltip content={t('buttons.copy')}>
@@ -288,7 +317,9 @@ const UtxoTransactionsListComponentBase = ({
             </Tooltip>
           ) : isConfirmed ? (
             <p className="text-xs font-normal text-brand-green">
-              {tokenOperation
+              {replacement
+                ? t('send.confirmed')
+                : tokenOperation
                 ? intent?.direction
                   ? t(
                       intent.direction === 'sent'
@@ -321,6 +352,15 @@ const UtxoTransactionsListComponentBase = ({
             </Tooltip>
           )}
         </div>
+        {replacement && (
+          <p
+            className="text-[10px] text-brand-gray300"
+            title={replacement.originalTxid}
+          >
+            {t('transactions.replaces')}:{' '}
+            {ellipsis(replacement.originalTxid, 4, 14)}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-[0.8] flex-col gap-1">
@@ -396,15 +436,35 @@ const UtxoTransactionsListComponentBase = ({
         )}
       </div>
 
-      <div>
-        <Tooltip content={t('notifications.clickToView')}>
-          <DetailArrowSvg
-            ariaLabel={t('notifications.clickToView')}
-            className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
-            onClick={handleGoTxDetails}
-          />
-        </Tooltip>
-      </div>
+      {canOpenReplacementMenu ? (
+        <UtxoReplacementActions
+          key={scope}
+          currency={activeNetwork.currency}
+          txid={tx.txid.toLowerCase()}
+          menu={{
+            alert,
+            scope: walletScope,
+            onDetails: handleGoTxDetails,
+            ...(explorer && {
+              onExplorer: () =>
+                window.open(
+                  buildExplorerUrl(explorer, 'tx', tx.txid),
+                  '_blank'
+                ),
+            }),
+          }}
+        />
+      ) : (
+        <div>
+          <Tooltip content={t('notifications.clickToView')}>
+            <DetailArrowSvg
+              ariaLabel={t('notifications.clickToView')}
+              className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
+              onClick={handleGoTxDetails}
+            />
+          </Tooltip>
+        </div>
+      )}
     </div>
   );
 };
@@ -431,7 +491,34 @@ export const UtxoTransactionsList = ({
     selectActiveAccountTransactions
   );
 
-  const { chainId, url: networkUrl } = activeNetwork as any;
+  const { chainId, url: networkUrl } = activeNetwork;
+  const scopedTransactions = currentAccountTransactions?.syscoin?.[chainId];
+  // Only Redux's local ACK can supply custody provenance for a compact row.
+  // Paged Blockbook responses can contain arbitrary fields.
+  const locallyAcknowledged = useMemo(() => {
+    const acknowledgements = new Map<
+      string,
+      UtxoAcknowledgedReplacement | undefined
+    >();
+    for (const transaction of scopedTransactions ?? []) {
+      const ack = transaction.localAcknowledgedInputs;
+      if (
+        !ack ||
+        ack.accountXpub !== currentAccount?.xpub ||
+        ack.networkUrl !== networkUrl
+      )
+        continue;
+      const txid = transaction.txid.toLowerCase();
+      const replacement = ack.replacement;
+      const validReplacement =
+        (replacement?.kind === 'speed-up' || replacement?.kind === 'cancel') &&
+        typeof replacement.originalTxid === 'string' &&
+        /^[0-9a-f]{64}$/.test(replacement.originalTxid) &&
+        replacement.originalTxid !== txid;
+      acknowledgements.set(txid, validReplacement ? replacement : undefined);
+    }
+    return acknowledgements;
+  }, [scopedTransactions, currentAccount?.xpub, networkUrl]);
   const confirmationContext = getHomeBrowsingScope(
     { ...currentAccount, ...activeAccountRef },
     activeNetwork,
@@ -652,7 +739,12 @@ export const UtxoTransactionsList = ({
   return (
     <>
       {array.slice(0, visibleCount).map((tx) => (
-        <UtxoTransactionsListComponent key={tx.txid} tx={tx} />
+        <UtxoTransactionsListComponent
+          key={tx.txid}
+          locallyAcknowledged={locallyAcknowledged.has(tx.txid.toLowerCase())}
+          replacement={locallyAcknowledged.get(tx.txid.toLowerCase())}
+          tx={tx}
+        />
       ))}
       {networkUrl
         ? (reconciliation || canLoadPage || array.length > visibleCount) && (

@@ -22,7 +22,10 @@ import {
 } from '../../shared/evmNativeMaximum';
 import { getEvmTransferCost } from '../../shared/evmTransferCost';
 import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../shared/smartAccountFeeQuote';
-import { UTXO_REVIEW_FUNDING_CHANGED } from '../../shared/utxoSendErrors';
+import {
+  isUtxoFundingError,
+  UTXO_FUNDING_UNAVAILABLE,
+} from '../../shared/utxoSendErrors';
 import {
   ICustomFeeParams,
   IFeeState,
@@ -1495,10 +1498,16 @@ export const SendConfirm = () => {
             setLoading(false);
           } catch (error: any) {
             if (deferUnconfirmedSubmissionToActivity(error)) return;
-            if (error?.code === UTXO_REVIEW_FUNDING_CHANGED) {
+            if (isUtxoFundingError(error?.code)) {
               setLoading(false);
               if (submission.isActive()) {
-                alert.error(t('send.maxBalanceReviewRequired'));
+                alert.error(
+                  t(
+                    error.code === UTXO_FUNDING_UNAVAILABLE
+                      ? 'send.utxoFundingUnavailable'
+                      : 'send.utxoReviewedInputsChanged'
+                  )
+                );
                 cancelConfirmation();
               }
               return;

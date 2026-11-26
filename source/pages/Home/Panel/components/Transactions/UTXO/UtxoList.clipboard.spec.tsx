@@ -187,9 +187,11 @@ const select = (id: number) => {
   mockStore.dispatch(setIsSwitchingAccount(false));
 };
 const copy = () => {
-  // This is the real list row's first native button, preceding Details.
-  const row = screen.getByText(/bbbbbb/).closest('div.flex.py-2')!;
-  fireEvent.click(row.querySelector('button')!);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: `buttons.copy: send.transactionId ${TXID}`,
+    })
+  );
 };
 it('waits for native clipboard completion before claiming the public transaction ID was copied', async () => {
   const held = pending();

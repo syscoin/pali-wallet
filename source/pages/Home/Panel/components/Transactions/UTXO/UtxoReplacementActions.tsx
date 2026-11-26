@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConfirmationModal } from 'components/Modal';
+import {
+  TransactionOptionsMenu,
+  TransactionOptionsMenuItem,
+} from 'components/TransactionOptions/TransactionOptionsMenu';
+import type { useUtils } from 'hooks/useUtils';
 import { getWalletBrowserTabId } from 'pages/Send/hardwareSendDraft';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import {
@@ -10,6 +15,7 @@ import {
   type ExtensionUtxoReplacementReview,
 } from 'scripts/Background/controllers/utxoReplacementReview';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
+import { getWalletNavigationScope } from 'utils/navigationState';
 
 import { openUtxoReplacementTab } from './utxoReplacementNavigation';
 
@@ -24,18 +30,128 @@ const discardReview = (reviewId: string) =>
     false
   ).catch(() => undefined);
 
-export function UtxoReplacementActions({
-  currency,
+type WalletScope = ReturnType<typeof getWalletNavigationScope>;
+type ReplacementKind = ExtensionUtxoReplacementReview['kind'];
+type RowMenu = {
+  alert: Pick<
+    ReturnType<typeof useUtils>['alert'],
+    'success' | 'error' | 'info'
+  >;
+  onDetails: () => void;
+  onExplorer?: () => void;
+  scope: WalletScope;
+};
+
+function useReplacementActions(
+  txid: string,
+  enabled: boolean,
+  scope?: WalletScope
+) {
+  const [result, setResult] = useState<{
+    actions: ExtensionUtxoReplacementActions;
+    needsWalletTab: boolean;
+  }>();
+  const account = scope?.account;
+  const network = scope?.network;
+  useEffect(() => {
+    if (!enabled) return;
+    let current = true;
+    void (async () => {
+      try {
+        const method = ['wallet', 'getUtxoReplacementActions'] as const;
+        const actions = (await (account !== undefined && network !== undefined
+          ? controllerEmitter(
+              [...method],
+              [txid, { account, network }],
+              15_000,
+              false
+            )
+          : controllerEmitter(
+              [...method],
+              [txid],
+              15_000
+            ))) as ExtensionUtxoReplacementActions;
+        if (!current || (actions?.speedUp !== true && actions?.cancel !== true))
+          return;
+        const needsWalletTab =
+          actions.hardware === true &&
+          (await getWalletBrowserTabId().catch(() => undefined)) === undefined;
+        if (current) setResult({ actions, needsWalletTab });
+      } catch {
+        // Only a successful eligibility lookup exposes replacement actions.
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [account, network, enabled, txid]);
+  return result;
+}
+
+function UtxoReplacementMenuItems({
+  busy,
+  onOpenWalletTab,
+  onPrepare,
+  scope,
   txid,
 }: {
-  currency: string;
+  busy: boolean;
+  onOpenWalletTab: () => void;
+  onPrepare: (kind: ReplacementKind) => void;
+  scope: WalletScope;
   txid: string;
 }) {
   const { t } = useTranslation();
-  const [actions, setActions] = useState<ExtensionUtxoReplacementActions>();
+  const { actions, needsWalletTab } =
+    useReplacementActions(txid, true, scope) ?? {};
+
+  if (needsWalletTab)
+    return (
+      <TransactionOptionsMenuItem
+        icon="link"
+        disabled={busy}
+        onClick={onOpenWalletTab}
+      >
+        {t('send.openWalletTab')}
+      </TransactionOptionsMenuItem>
+    );
+  return (
+    <>
+      {actions?.speedUp === true && (
+        <TransactionOptionsMenuItem
+          icon="speed-up"
+          disabled={busy}
+          onClick={() => onPrepare('speed-up')}
+        >
+          {t('header.speedUp')}
+        </TransactionOptionsMenuItem>
+      )}
+      {actions?.cancel === true && (
+        <TransactionOptionsMenuItem
+          icon="cancel"
+          disabled={busy}
+          onClick={() => onPrepare('cancel')}
+        >
+          {t('buttons.cancel')}
+        </TransactionOptionsMenuItem>
+      )}
+    </>
+  );
+}
+
+export function UtxoReplacementActions({
+  currency,
+  menu,
+  txid,
+}: {
+  currency: string;
+  menu?: RowMenu;
+  txid: string;
+}) {
+  const { t } = useTranslation();
+  const { actions, needsWalletTab } = useReplacementActions(txid, !menu) ?? {};
   const [review, setReview] = useState<ExtensionUtxoReplacementReview>();
   const [busy, setBusy] = useState(false);
-  const [walletTab, setWalletTab] = useState<boolean>();
   const [feedback, setFeedback] = useState<'unavailable' | 'reviewExpired'>();
   const [outcome, setOutcome] = useState<{
     status: 'submitted' | 'unknown';
@@ -48,39 +164,22 @@ export function UtxoReplacementActions({
 
   useEffect(() => {
     active.current = true;
-    const lifetime = new AbortController();
-    void controllerEmitter(
-      ['wallet', 'getUtxoReplacementActions'],
-      [txid],
-      15_000
-    )
-      .then((result) => {
-        if (!lifetime.signal.aborted)
-          setActions(result as ExtensionUtxoReplacementActions);
-      })
-      .catch(() => undefined);
     return () => {
       active.current = false;
-      lifetime.abort();
       if (reviewId.current) discardReview(reviewId.current);
       reviewId.current = undefined;
     };
   }, [txid]);
 
-  useEffect(() => {
-    if (!actions?.hardware) return;
-    let current = true;
-    void getWalletBrowserTabId()
-      .then((id) => {
-        if (current) setWalletTab(id !== undefined);
-      })
-      .catch(() => {
-        if (current) setWalletTab(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, [actions?.hardware]);
+  const reportReviewFailure = (reason: 'unavailable' | 'reviewExpired') => {
+    if (menu)
+      menu.alert.error(
+        t(`transactions.utxoReplacement.${reason}`),
+        undefined,
+        () => active.current
+      );
+    else setFeedback(reason);
+  };
 
   const openWalletTab = async () => {
     if (pending.current) return;
@@ -89,7 +188,7 @@ export function UtxoReplacementActions({
     try {
       await openUtxoReplacementTab(txid);
     } catch {
-      if (active.current) setFeedback('unavailable');
+      if (active.current) reportReviewFailure('unavailable');
     } finally {
       pending.current = false;
       if (active.current) setBusy(false);
@@ -108,7 +207,7 @@ export function UtxoReplacementActions({
     const timer = setTimeout(() => {
       if (pending.current || reviewId.current !== review.id) return;
       closeReview();
-      setFeedback('reviewExpired');
+      reportReviewFailure('reviewExpired');
     }, review.validForMs);
     return () => clearTimeout(timer);
   }, [review]);
@@ -121,7 +220,7 @@ export function UtxoReplacementActions({
     try {
       const prepared = (await controllerEmitter(
         ['wallet', 'prepareUtxoReplacement'],
-        [txid, kind],
+        menu ? [txid, kind, menu.scope] : [txid, kind],
         35_000,
         false
       )) as ExtensionUtxoReplacementReview;
@@ -132,7 +231,7 @@ export function UtxoReplacementActions({
       reviewId.current = prepared.id;
       setReview(prepared);
     } catch {
-      if (active.current) setFeedback('unavailable');
+      if (active.current) reportReviewFailure('unavailable');
     } finally {
       pending.current = false;
       if (active.current) setBusy(false);
@@ -150,18 +249,29 @@ export function UtxoReplacementActions({
         review.hardware ? HARDWARE_UTXO_REPLACEMENT_TIMEOUT_MS : 65_000,
         false
       )) as { txid: string };
-      if (active.current)
+      if (active.current) {
         setOutcome({ status: 'submitted', txid: response.txid });
+        menu?.alert.success(
+          t('transactions.utxoReplacement.submitted'),
+          undefined,
+          () => active.current
+        );
+      }
     } catch (error) {
       if (!active.current) return;
       if (error?.transactionNotBroadcast === true) {
-        setFeedback('unavailable');
+        reportReviewFailure('unavailable');
       } else {
         const signedTxid =
           typeof error?.txid === 'string' && /^[0-9a-f]{64}$/.test(error.txid)
             ? error.txid
             : undefined;
         setOutcome({ status: 'unknown', txid: signedTxid });
+        menu?.alert.info(
+          t('transactions.replay.unknown'),
+          undefined,
+          () => active.current
+        );
       }
     } finally {
       pending.current = false;
@@ -196,17 +306,30 @@ export function UtxoReplacementActions({
     }
   };
 
-  if (
-    (!actions?.speedUp && !actions?.cancel && !outcome) ||
-    (actions?.hardware && walletTab === undefined)
-  )
-    return null;
+  if (!menu && !actions && !outcome) return null;
   const amount = (satoshis: string) =>
     `${formatSyscoinValue(satoshis)} ${currency.toUpperCase()}`;
 
   return (
-    <div className="my-3 min-w-0">
-      {outcome ? (
+    <div className={menu ? undefined : 'my-3 min-w-0'}>
+      {menu && (
+        <TransactionOptionsMenu
+          pending
+          onDetails={menu.onDetails}
+          onExplorer={menu.onExplorer}
+        >
+          {!outcome && (
+            <UtxoReplacementMenuItems
+              busy={busy || !!review}
+              onOpenWalletTab={() => void openWalletTab()}
+              onPrepare={(kind) => void prepare(kind)}
+              scope={menu.scope}
+              txid={txid}
+            />
+          )}
+        </TransactionOptionsMenu>
+      )}
+      {menu ? null : outcome ? (
         <div className="space-y-2 text-sm">
           <p role="status">
             {t(
@@ -240,7 +363,7 @@ export function UtxoReplacementActions({
             </p>
           )}
         </div>
-      ) : actions?.hardware && walletTab === false ? (
+      ) : needsWalletTab ? (
         <button
           type="button"
           className={buttonClass}
@@ -273,7 +396,7 @@ export function UtxoReplacementActions({
           )}
         </div>
       )}
-      {feedback && (
+      {!menu && feedback && (
         <p role="alert" className="mt-2 text-sm text-warning-error">
           {t(`transactions.utxoReplacement.${feedback}`)}
         </p>
