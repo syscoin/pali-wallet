@@ -162,7 +162,7 @@ export type ActivityLifecycle = {
 };
 export type ActivityExplorerPort = Pick<ActivityExplorerReader, 'page'> &
   Partial<Pick<ActivityExplorerReader, 'pending'>>;
-export type ActivityReceiptPort = Pick<ActivityReceiptReader, 'read'> & Partial<Pick<ActivityReceiptReader, 'observe' | 'retainedWave'>>;
+export type ActivityReceiptPort = Pick<ActivityReceiptReader, 'read'> & Partial<Pick<ActivityReceiptReader, 'observe' | 'retainedWave' | 'blockHashAt'>>;
 export type EvmActivityReaders = Readonly<{
   explorer: ActivityExplorerPort;
   receipts: ActivityReceiptPort;
@@ -179,10 +179,14 @@ type RetainedObservationWork = {
   lifetime: AbortController;
   queue: LocalActivityRecord[];
   seen: Set<string>;
+  confirmedUntil: Map<string, number>;
+  blockHashes: Map<string, Promise<string>>;
   workers: number;
   retry?: ReturnType<typeof setTimeout>;
 };
 const RECENT_SUBMISSION_MS = 5 * 60_000;
+const recentlySubmitted = (local: LocalActivityRecord, now = Date.now()) =>
+  local.createdAt <= now && local.createdAt + RECENT_SUBMISSION_MS > now;
 const PENDING_RECEIPT_INTERVAL_MS = 15_000;
 const OLDER_RECEIPT_INTERVAL_MS = 60_000;
 const initial = (): NativeActivitySnapshot =>
@@ -841,7 +845,7 @@ export class NativeActivity {
       const display = includeIndex ? this.displays.get(row.hash) : undefined;
       return {
         ...row,
-        observation: this.observations.get(row.hash),
+        observation: row.local?.smartAccount ? undefined : this.observations.get(row.hash),
         indexed,
         display,
         indexedStatus: indexed
@@ -862,7 +866,7 @@ export class NativeActivity {
     // fresh sibling proof. Use only observations owned by this generation.
     const replacements = this.scope ? nativeLocalReplacementStatuses(
       observedRows.map(row => ({ ...row,
-        observation: this.observations.get(row.hash),
+        observation: row.local?.smartAccount ? undefined : this.observations.get(row.hash),
         retainedObservation: this.retainedObservations.get(row.hash),
       })), this.scope) : new Map<string, 'replaced'>();
     const withReplacement = (row: ActivityRow): ActivityRow => ({ ...row,
@@ -977,9 +981,10 @@ export class NativeActivity {
         generation = this.generation,
         revision = this.source.getSnapshot().revision;
       if (signal.aborted) continue;
+      const smartDetail = !!this.locals.get(hash)?.smartAccount;
       const guard = () => {
         this.guard(generation, revision, signal);
-        if (this.checking.get(hash) !== detail || this.scope !== scope || this.runtime() !== runtime)
+        if (smartDetail !== !!this.locals.get(hash)?.smartAccount || this.checking.get(hash) !== detail || this.scope !== scope || this.runtime() !== runtime)
           throw new ActivityError('CANCELLED');
       };
       this.workers++;
@@ -989,6 +994,15 @@ export class NativeActivity {
         const local = this.locals.get(hash);
         if (local && (local.smartAccount || this.pagedLocals.has(hash))) {
           if (!runtime?.observeLocal) throw new ActivityError('UNAVAILABLE');
+          const prior = this.retainedObservations.get(hash);
+          if (local.smartAccount && prior?.status === 'mined' && prior.outcome === 'confirmed' && this.receipts.blockHashAt) {
+            const header = await this.receipts.blockHashAt(prior.block.number, scope.network, signal, guard);
+            guard();
+            if (header === prior.block.hash) {
+              this.unavailable.delete(hash);
+              return;
+            }
+          }
           // The signed record already supplies the envelope. Use one owned
           // observation for status, without fetching the same receipt again.
           const observation = await runtime.observeLocal(local, guard, signal, this.retainedObserver(scope, generation, signal, guard));
@@ -1033,7 +1047,9 @@ export class NativeActivity {
       void readDetail()
         .catch(() => {
           try { guard(); } catch { return; }
-          this.unavailable.add(hash);
+          const prior = this.retainedObservations.get(hash);
+          if (!(smartDetail && prior?.status === 'mined' && prior.outcome === 'confirmed'))
+            this.unavailable.add(hash);
         })
         .finally(() => {
           this.workers--;
@@ -1049,7 +1065,9 @@ export class NativeActivity {
     if (this.snapshot.rows.some((row) => !row.authorizationOnly && row.hash === hash)) {
       this.observations.delete(hash);
       this.unavailable.delete(hash);
-      if (this.pagedLocals.has(hash) || this.locals.get(hash)?.smartAccount) this.retainedObservations.delete(hash);
+      const prior = this.retainedObservations.get(hash);
+      const keepPlacement = this.locals.get(hash)?.smartAccount && prior?.status === 'mined' && prior.outcome === 'confirmed';
+      if (!keepPlacement && (this.pagedLocals.has(hash) || this.locals.get(hash)?.smartAccount)) this.retainedObservations.delete(hash);
       this.hydrate(hash);
       this.renderRows();
     }
@@ -1062,24 +1080,28 @@ export class NativeActivity {
     const generation = this.generation,
       revision = this.source.getSnapshot().revision;
     // Explorer deadlines do not retire this generation's owned journal reads.
-    const work = this.retainedWork ??= { lifetime: new AbortController(), queue: [], seen: new Set(), workers: 0 };
+    const work: RetainedObservationWork = this.retainedWork ??= { lifetime: new AbortController(), queue: [], seen: new Set(), confirmedUntil: new Map(), blockHashes: new Map(), workers: 0 };
     const guard = () => {
       this.guard(generation, revision, work.lifetime.signal);
       if (this.retainedWork !== work) throw new ActivityError('CANCELLED');
     };
-    // A completed local sibling needs fresh proof only while its nonce still
-    // has an unresolved row. Ordinary completed history never starts a read.
+    // Recent Smart Account confirmations may have been archived before Activity opened.
     const locals = [...this.locals.values()];
     const candidates = locals.filter((local) => !this.pagedLocals.has(local.hash) &&
-      ['signed', 'attempted', 'submitted'].includes(local.phase)
+      (['signed', 'attempted', 'submitted'].includes(local.phase) ||
+       local.smartAccount && local.phase === 'confirmed' && recentlySubmitted(local))
     );
     candidates.push(...nativeLocalReplacementWinnersToObserve(locals, scope));
     for (const local of candidates) if (!work.seen.has(local.hash)) {
+      if (local.smartAccount && local.phase === 'confirmed' && recentlySubmitted(local)) {
+        work.confirmedUntil.set(local.hash, local.createdAt + RECENT_SUBMISSION_MS);
+      }
       work.seen.add(local.hash); work.queue.push(local);
     }
     const pending = () => [...this.locals.values()].filter(local => {
-      if (this.pagedLocals.has(local.hash) ||
-          local.phase !== 'attempted' && local.phase !== 'submitted' ||
+      if (this.pagedLocals.has(local.hash)) return false;
+      if ((work.confirmedUntil.get(local.hash) ?? 0) > Date.now()) return true;
+      if (local.phase !== 'attempted' && local.phase !== 'submitted' ||
           this.observations.get(local.hash)?.block) return false;
       const observation = this.retainedObservations.get(local.hash);
       return !observation || !getObservedEvmTerminalPhase(observation, local.nonce);
@@ -1091,13 +1113,14 @@ export class NativeActivity {
         if (work.workers || work.retry !== undefined || !this.connection) return;
         const unsettled = pending();
         if (!unsettled.length) return;
-        const recent = unsettled.some(local => Date.now() - local.createdAt < RECENT_SUBMISSION_MS);
-        // Recheck only open submissions. Preserve the history and its pagination
-        // while the existing scoped receipt reader checks for settlement.
+        const recent = unsettled.some(local => (work.confirmedUntil.get(local.hash) ?? 0) > Date.now() ||
+          Date.now() - local.createdAt < RECENT_SUBMISSION_MS);
+        // Keep the history and its pagination while checking these scoped receipts.
         work.retry = setTimeout(() => {
           work.retry = undefined;
           try { guard(); } catch { return; }
           if (work.workers || work.queue.length) return;
+          work.blockHashes.clear();
           work.queue.push(...pending().filter(local => !this.checking.has(local.hash)));
           pump();
         }, recent ? PENDING_RECEIPT_INTERVAL_MS : OLDER_RECEIPT_INTERVAL_MS);
@@ -1112,8 +1135,33 @@ export class NativeActivity {
       const run = async (local: LocalActivityRecord) => {
         try {
           guard();
+          const prior = this.retainedObservations.get(local.hash);
+          if (local.smartAccount && prior?.status === 'mined' && work.confirmedUntil.has(local.hash)) {
+            // An unchanged placement already proves the operation. An unavailable
+            // header leaves its prior evidence intact, even if the receipt index lags.
+            if (!this.receipts.blockHashAt) return;
+            const height = prior.block.number;
+            let header = work.blockHashes.get(height);
+            if (!header) {
+              header = this.receipts.blockHashAt(height, scope.network, lifetime, guard);
+              work.blockHashes.set(height, header);
+            }
+            const currentHash = await header;
+            guard();
+            if (currentHash === prior.block.hash || this.retainedObservations.get(local.hash) !== prior) return;
+          }
           const observation = await runtime.observeLocal!(local, guard, lifetime, observe);
           guard();
+          if (local.smartAccount) {
+            const phase = getObservedEvmTerminalPhase(observation, local.nonce);
+            if (phase === 'confirmed' && !work.confirmedUntil.has(local.hash) &&
+                (recentlySubmitted(local) ||
+                 this.retainedObservations.get(local.hash)?.status === 'missing')) {
+              work.confirmedUntil.set(local.hash, Date.now() + RECENT_SUBMISSION_MS);
+            } else if (phase === 'reverted' || phase === 'nonce-consumed') {
+              work.confirmedUntil.delete(local.hash);
+            }
+          }
           this.retainedObservations.set(local.hash, observation);
           this.unavailable.delete(local.hash);
         } catch {

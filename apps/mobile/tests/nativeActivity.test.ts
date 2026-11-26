@@ -64,6 +64,7 @@ async function expireExplorerResponses(t: { mock: { timers: { tick(ms: number): 
 type ReceiptCall = { hash: string; owner: string; signal: AbortSignal; guard: () => void };
 class FakeReceipts extends ActivityReceiptReader {
   readonly calls: ReceiptCall[] = [];
+  override async blockHashAt(_number: string): Promise<string> { return hash(100); }
   private readonly reply: (call: ReceiptCall) => ActivityTransactionObservation | null | Promise<ActivityTransactionObservation | null>;
   constructor(reply: (call: ReceiptCall) => ActivityTransactionObservation | null | Promise<ActivityTransactionObservation | null> = (call) => observation(call.hash, call.owner)) {
     super({ fetch: async () => { throw Error('Unexpected real receipt fetch'); } }); this.reply = reply;
@@ -160,6 +161,143 @@ test('open activity settles submitted transactions in place and stops reading af
     assert.equal(f.localReads.length, 2);
     assert.equal(f.explorer.pages.length, pages);
     assert.equal(f.cacheWrites.length, cacheWrites);
+  } finally { disconnect(); }
+});
+
+for (const phase of ['submitted', 'confirmed'] as const) {
+  test(`visible Smart Activity rechecks a recent ${phase} transaction through reorg and re-inclusion`, async t => {
+    const now = Date.now();
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now });
+    const local = { ...fixture().local(1, phase), createdAt: now, smartAccount: {
+      payer: OTHER, operations: [{ operationHash: hash(9), operationNonce: '0' }],
+    } };
+    let evidence: EvmTransactionObservation | undefined = {
+      status: 'mined', outcome: 'confirmed', block: { hash: hash(99), number: '99' },
+    };
+    const receipts = new FakeReceipts();
+    let header: string | null = hash(99);
+    const headers: string[] = [];
+    receipts.blockHashAt = async height => {
+      headers.push(height);
+      if (!header) throw Error('Header unavailable');
+      return header;
+    };
+    const f = fixture({ local, receipts, observeLocal: async () => {
+      if (!evidence) throw Error('offline');
+      return evidence;
+    } });
+    const flush = async () => { for (let turn = 0; turn < 80; turn++) await Promise.resolve(); };
+    const disconnect = f.controller.connect();
+    try {
+      await flush();
+      const original = f.controller.getSnapshot().rows[0]!;
+      assert.deepEqual(original.retainedObservation, evidence);
+      const pages = f.explorer.pages.length;
+      evidence = { status: 'missing', latestNonce: String(local.nonce) };
+      t.mock.timers.tick(15_000); await flush();
+      assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, original.retainedObservation);
+      assert.equal(f.localReads.length, 1, 'unchanged block hash needs no receipt read');
+      header = null;
+      t.mock.timers.tick(15_000); await flush();
+      assert.equal(f.localReads.length, 1, 'missing header cannot downgrade the placement');
+      assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, original.retainedObservation);
+      header = hash(100);
+      evidence = undefined;
+      t.mock.timers.tick(15_000); await flush();
+      assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, original.retainedObservation);
+      evidence = { status: 'missing', latestNonce: String(local.nonce) };
+      t.mock.timers.tick(15_000); await flush();
+      assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, evidence);
+      evidence = { status: 'mined', outcome: 'confirmed', block: { hash: hash(100), number: '100' } };
+      t.mock.timers.tick(15_000); await flush();
+      assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, evidence);
+      assert.equal(f.controller.getSnapshot().rows[0]?.local, original.local);
+      t.mock.timers.tick(15_000); await flush();
+      assert.equal(headers.at(-1), '100', 're-inclusion moves the placement watch');
+      const reads = f.localReads.length;
+      t.mock.timers.tick(300_000); await flush();
+      t.mock.timers.tick(60_000); await flush();
+      assert.equal(f.localReads.length, reads);
+      assert.equal(f.explorer.pages.length, pages);
+    } finally { disconnect(); }
+  });
+}
+
+test('a canonical reverted Smart receipt ends the recent confirmation watch', async t => {
+  const now = Date.now();
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now });
+  const local = { ...fixture().local(1), createdAt: now, smartAccount: {
+    payer: OTHER, operations: [{ operationHash: hash(9), operationNonce: '0' }],
+  } };
+  let outcome: 'confirmed' | 'reverted' = 'confirmed';
+  const f = fixture({ local, observeLocal: async () => ({
+    status: 'mined', outcome, block: { hash: hash(outcome === 'confirmed' ? 99 : 100), number: '99' },
+  }) });
+  const flush = async () => { for (let turn = 0; turn < 80; turn++) await Promise.resolve(); };
+  const disconnect = f.controller.connect();
+  try {
+    await flush();
+    outcome = 'reverted';
+    t.mock.timers.tick(15_000); await flush();
+    assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation,
+      { status: 'mined', outcome, block: { hash: hash(100), number: '99' } });
+    t.mock.timers.tick(60_000); await flush();
+    assert.equal(f.localReads.length, 2);
+  } finally { disconnect(); }
+});
+
+for (const late of [false, true]) {
+  test(`attaching Smart local history discards a ${late ? 'delayed' : 'cached'} outer receipt`, async () => {
+    const held = deferred<ActivityTransactionObservation>();
+    const local = { ...fixture().local(1), smartAccount: {
+      payer: OTHER, operations: [{ operationHash: hash(9), operationNonce: '0' }],
+    } };
+    const f = fixture({
+      explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1)] : []),
+      receipts: new FakeReceipts(() => held.promise),
+      loadTarget: async () => ({ local }),
+      observeLocal: async () => ({ status: 'missing', latestNonce: String(local.nonce) }),
+    });
+    await f.controller.refresh();
+    f.controller.inspect(local.hash);
+    await until(() => f.receipts.calls.length === 1);
+    if (!late) {
+      held.resolve(observation(local.hash));
+      await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'confirmed');
+    }
+    await f.controller.loadTarget(local.hash);
+    held.resolve(observation(local.hash));
+    await until(() => !f.controller.getSnapshot().rows[0]?.checking);
+    const row = f.controller.getSnapshot().rows[0]!;
+    assert.equal(row.observation, undefined);
+    assert.equal(row.indexedStatus, undefined);
+    f.controller.inspect(local.hash);
+    await until(() => f.controller.getSnapshot().rows[0]?.retainedObservation?.status === 'missing');
+    assert.equal(f.controller.getSnapshot().rows[0]?.observation, undefined);
+  });
+}
+
+test('recent Smart transactions at the same height share one header read per interval', async t => {
+  const now = Date.now();
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now });
+  const locals = [1, 2, 3].map(index => ({ ...fixture().local(index), createdAt: now, smartAccount: {
+    payer: OTHER, operations: [{ operationHash: hash(10 + index), operationNonce: String(index) }],
+  } }));
+  const receipts = new FakeReceipts();
+  let headers = 0;
+  receipts.blockHashAt = async () => { headers++; return hash(99); };
+  const f = fixture({ locals, receipts, observeLocal: async () => ({
+    status: 'mined', outcome: 'confirmed', block: { hash: hash(99), number: '99' },
+  }) });
+  const flush = async () => { for (let turn = 0; turn < 80; turn++) await Promise.resolve(); };
+  const disconnect = f.controller.connect();
+  try {
+    await flush();
+    for (let interval = 1; interval <= 2; interval++) {
+      t.mock.timers.tick(15_000); await flush();
+      assert.equal(headers, interval);
+      assert.equal(f.localReads.length, locals.length);
+    }
   } finally { disconnect(); }
 });
 

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { needsVisibleEvmPlacementCheck } from '../../../shared/evmHistory';
 import { ExternalLinkSvg } from 'components/Icon/Icon';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useRequestScope } from 'hooks/useRequestScope';
@@ -99,10 +100,18 @@ export const TransactionsPanel = () => {
       current = false;
     };
   }, [needsInitialRead, scopeKey, scope.account, scope.network]);
+  const rpcRows =
+    accountTransactions[TransactionsType.Ethereum][activeNetwork.chainId];
+  const rpcRowsRef = useRef(rpcRows);
+  rpcRowsRef.current = rpcRows;
+  const refreshRpcRows =
+    historyMayBeIncomplete &&
+    rpcRows?.some((row) => needsVisibleEvmPlacementCheck(row));
   const refreshVisibleHistory =
     !isBitcoinBased &&
-    Boolean(activeNetwork.apiUrl) &&
-    (historyState === 'ready' || historyState === 'error') &&
+    (refreshRpcRows ||
+      (Boolean(activeNetwork.apiUrl) &&
+        (historyState === 'ready' || historyState === 'error'))) &&
     !networkTransition &&
     !isSwitchingAccount;
   const historyCheckedAt = currentHistory?.checkedAt;
@@ -110,14 +119,20 @@ export const TransactionsPanel = () => {
     if (!refreshVisibleHistory) return;
     const refresh = () => {
       if (document.visibilityState !== 'visible') return;
+      if (
+        refreshRpcRows &&
+        !rpcRowsRef.current?.some((row) => needsVisibleEvmPlacementCheck(row))
+      )
+        return;
       void controllerEmitter(
         ['wallet', 'refreshTransactionHistory'],
         [scope, 'visible']
       ).catch(() => undefined);
     };
     if (
-      historyCheckedAt !== undefined &&
-      Date.now() - historyCheckedAt >= 15_000
+      refreshRpcRows ||
+      (historyCheckedAt !== undefined &&
+        Date.now() - historyCheckedAt >= 15_000)
     )
       void refresh();
     const interval = window.setInterval(refresh, 15_000);
@@ -126,7 +141,7 @@ export const TransactionsPanel = () => {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [refreshVisibleHistory, historyCheckedAt, scope]);
+  }, [refreshVisibleHistory, refreshRpcRows, historyCheckedAt, scope]);
   const startFailed = needsInitialRead && failedStartScope === scopeKey;
   const beginRetry = useRequestScope(scopeKey);
   const retryPending = useRef<() => boolean>();

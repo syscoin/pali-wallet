@@ -46,6 +46,17 @@ function fixture(override?: (call: Call) => unknown | Promise<unknown>, timeoutM
   return { reader, calls };
 }
 
+test('the placement check reads only the scoped public block at its exact height', async () => {
+  const network = getNativeNetwork('ethereum');
+  const f = fixture();
+  assert.equal(await f.reader.blockHashAt('80', network, signal(), () => undefined), BLOCK);
+  assert.deepEqual(f.calls.map(({ method, params }) => [method, params]), [['eth_getBlockByNumber', ['0x50', false]]]);
+  for (const unavailable of [null, { number: '0x4f', hash: BLOCK }, { number: '0x50', hash: '0x' }]) {
+    const lagging = fixture(() => unavailable);
+    await assert.rejects(lagging.reader.blockHashAt('80', network, signal(), () => undefined));
+  }
+});
+
 test('Activity returns exact direct ETH observations, canonical timestamp and immediate confirmation using only registered read methods', async () => {
   const f = fixture();
   const result = await f.reader.read(HASH.toUpperCase().replace('0X', '0x'), OWNER, signal(), () => undefined, getNativeNetwork('ethereum'));

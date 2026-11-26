@@ -9,6 +9,8 @@ import {
   explorerApiError,
   belongsToEvmHistoryAccount,
   markEvmHistoryIncomplete,
+  markEvmHistoryOrphaned,
+  needsVisibleEvmPlacementCheck,
   markEvmExplorerHasMore,
   isEvmHistoryIncomplete,
 } from '../../../../shared/evmHistory';
@@ -691,7 +693,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     // address can never match — EntryPoint logs below cover them instead.
     if (
       rawTransactions.length === 0 &&
-      !rpcForbiddenList.includes(currentNetworkChainId) &&
+      (!activeNetwork?.apiUrl ||
+        !rpcForbiddenList.includes(currentNetworkChainId)) &&
       !(isSmartAccount && apiSucceeded)
     ) {
       // Smart block scanning based on account history
@@ -709,7 +712,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       const blocksToScan = hasTransactionHistory ? 30 : hasBalance ? 20 : 10;
       rawTransactions = [];
       // Skip expensive block scanning during rapid polling
-      if (isPolling && !isRapidPolling) {
+      if (
+        isPolling &&
+        !isRapidPolling &&
+        !rpcForbiddenList.includes(currentNetworkChainId)
+      ) {
         rawTransactions = await getUserTransactionByDefaultProvider(
           blocksToScan,
           web3Provider,
@@ -730,8 +737,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         currentAccountTxs?.ethereum?.[currentNetworkChainId]
       ) {
         const existingTxs = currentAccountTxs.ethereum[currentNetworkChainId];
-        const pendingTxs = existingTxs.filter(
-          (tx: any) => !tx.blockNumber || !tx.blockHash
+        const pendingTxs = existingTxs.filter((tx: any) =>
+          needsVisibleEvmPlacementCheck(tx)
         );
 
         if (pendingTxs.length > 0) {
@@ -760,6 +767,23 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           const pendingTxPromises = pendingTxs.map(async (pendingTx: any) => {
             try {
               check();
+              let orphaned = false;
+              if (Number(pendingTx.blockNumber) > 0 && pendingTx.blockHash) {
+                const header = await getBlockOnce(
+                  Number(pendingTx.blockNumber)
+                );
+                check();
+                if (
+                  !header ||
+                  Number(header.number) !== Number(pendingTx.blockNumber) ||
+                  !/^0x[0-9a-f]{64}$/i.test(header.hash) ||
+                  !/^0x[0-9a-f]{64}$/i.test(pendingTx.blockHash) ||
+                  header.hash.toLowerCase() ===
+                    pendingTx.blockHash.toLowerCase()
+                )
+                  return null;
+                orphaned = true;
+              }
               const tx = await web3Provider.getTransaction(pendingTx.hash);
               check();
               if (
@@ -822,6 +846,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                     isError: isSuccess === null ? null : isSuccess ? '0' : '1',
                   };
                 } else {
+                  if (orphaned) return markEvmHistoryOrphaned(pendingTx);
                   // Still pending
                   return {
                     ...tx,
@@ -838,6 +863,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                   };
                 }
               }
+              if (orphaned && tx === null)
+                return markEvmHistoryOrphaned(pendingTx);
             } catch (error) {
               console.error(
                 `[pollingEvmTransactions] Error fetching pending tx ${pendingTx.hash}:`,

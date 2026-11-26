@@ -656,3 +656,91 @@ it.each([
     expect(reads).toEqual([]);
   }
 );
+
+it('rechecks a recent RPC-only placement on mount and follows canonical reinclusion', async () => {
+  mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: undefined }));
+  const timestamp = Math.floor(Date.now() / 1000);
+  setRows([{ ...transaction, timestamp }]);
+  const changedHash = '0x' + 'ef'.repeat(32);
+  provider.getBlock = jest.fn(async (number: number) => ({
+    number,
+    hash: changedHash,
+    timestamp,
+  }));
+  provider.getTransaction = jest.fn().mockResolvedValue(null);
+  await renderAfterSettleTime();
+  expect(currentRows()[0].blockNumber).toBeNull();
+  expect(provider.getTransaction).toHaveBeenCalledWith(HASH);
+  provider.getTransaction.mockResolvedValue({
+    ...transaction,
+    blockNumber: 51,
+    blockHash: changedHash,
+  });
+  provider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    from: OTHER,
+    to: OWNER,
+    transactionHash: HASH,
+    blockNumber: 51,
+    blockHash: changedHash,
+    status: 1,
+  });
+  await act(async () => jest.advanceTimersByTimeAsync(15_000));
+  expect(currentRows()[0].blockNumber).toBe(51);
+  expect(currentRows()[0].blockHash).toBe(changedHash);
+  expect(reads).toEqual([]);
+});
+
+it('keeps RPC-only placement on failed canonical read, shares headers, and stops after the recent window', async () => {
+  mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: undefined }));
+  const timestamp = Math.floor(Date.now() / 1000) - 280;
+  setRows([
+    { ...transaction, timestamp },
+    { ...transaction, hash: '0x' + 'ef'.repeat(32), nonce: 2, timestamp },
+  ]);
+  provider.getBlock = jest.fn().mockRejectedValue(new Error('unavailable'));
+  await renderAfterSettleTime();
+  expect(provider.getBlock).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'));
+    await mockWallet.refreshTransactionHistory(
+      getWalletNavigationScope(),
+      'visible'
+    );
+  });
+  expect(provider.getBlock).toHaveBeenCalledTimes(1);
+  expect(
+    currentRows().every((row: any) => row.blockHash === transaction.blockHash)
+  ).toBe(true);
+  await act(async () => jest.advanceTimersByTimeAsync(60_000));
+  expect(provider.getBlock).toHaveBeenCalledTimes(2);
+});
+
+it('replaces a moved placement directly only after the new receipt agrees with the header', async () => {
+  mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: undefined }));
+  const timestamp = Math.floor(Date.now() / 1000);
+  setRows([{ ...transaction, timestamp }]);
+  const blockHash = '0x' + 'ef'.repeat(32);
+  provider.getBlock = jest.fn(async (number: number) => ({
+    number,
+    hash: blockHash,
+    timestamp,
+  }));
+  provider.getTransaction = jest
+    .fn()
+    .mockResolvedValue({ ...transaction, blockNumber: 51, blockHash });
+  provider.getTransactionReceipt = jest
+    .fn()
+    .mockRejectedValueOnce(new Error('read failed'))
+    .mockResolvedValue({
+      from: OTHER,
+      to: OWNER,
+      transactionHash: HASH,
+      blockNumber: 51,
+      blockHash,
+      status: 1,
+    });
+  await renderAfterSettleTime();
+  expect(currentRows()[0].blockHash).toBe(transaction.blockHash);
+  await act(async () => jest.advanceTimersByTimeAsync(15_000));
+  expect(currentRows()[0]).toMatchObject({ blockHash, blockNumber: 51 });
+});

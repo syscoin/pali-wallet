@@ -2,6 +2,22 @@ import { isTransactionInBlock as isHistoryTransactionInBlock } from './transacti
 
 export const EVM_ACTIVITY_CURSOR_STALE = 'EVM_ACTIVITY_CURSOR_STALE';
 
+/** Visible RPC-only Activity follows pending rows and short-lived mined placements. */
+export function needsVisibleEvmPlacementCheck(
+  tx: {
+    hash?: string;
+    isReplaced?: boolean;
+    status?: unknown;
+    timestamp?: unknown;
+  },
+  now = Date.now()
+) {
+  if (!tx?.hash || tx.isReplaced || tx.status === 'replaced') return false;
+  if (!isHistoryTransactionInBlock(tx)) return true;
+  const timestampMs = Number(tx.timestamp) * 1000;
+  return timestampMs > now - 5 * 60_000 && timestampMs <= now + 60_000;
+}
+
 const orphanedPlacement = Symbol('orphanedPlacement');
 const incompleteHistory = Symbol('incompleteHistory');
 const explorerHasMore = Symbol('explorerHasMore');

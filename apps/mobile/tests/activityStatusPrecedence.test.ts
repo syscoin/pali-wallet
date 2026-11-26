@@ -77,6 +77,30 @@ for (const [indexed, outcome] of [
     }
   });
 
+for (const canonical of ['missing', 'reverted', 'confirmed'] as const) {
+  test(`canonical Smart ${canonical} supersedes stale detail, indexed and authorization evidence`, () => {
+    const screen = presentationFixture();
+    try {
+      const hash = '0x' + 'ab'.repeat(32);
+      const from = '0x' + '11'.repeat(20);
+      const oldBlock = { number: '80', hash: '0x' + 'cd'.repeat(32) };
+      const result = screen.render({
+        hash, checking: false, unavailable: false,
+        local: { address: from, recipient: from, amountUnits: '1', nonce: 3, phase: 'confirmed',
+          smartAccount: { payer: from, operations: [{ operationHash: hash, operationNonce: '0' }] } },
+        indexedStatus: 'confirmed', observation: { status: 'confirmed', block: oldBlock, from, to: from },
+        retainedObservation: canonical === 'missing' ? { status: 'missing', latestNonce: '3' }
+          : { status: 'mined', outcome: canonical, block: { number: '80', hash: '0x' + 'ee'.repeat(32) } },
+        smartAuthorizations: [{ observation: { kind: 'observed', success: canonical !== 'confirmed',
+          transactionHash: hash, block: oldBlock } }],
+      }, { accountAddress: from, nativeSymbol: 'ETH', networkName: 'Ethereum', hideBalances: false }) as unknown as { status: string };
+      const expected = canonical === 'missing' ? 'mobile.activityViews.nativeActivity.submissionUnconfirmed'
+        : canonical === 'reverted' ? 'send.reverted' : 'send.confirmed';
+      assert.equal(result.status, nativeTranslationFixture.nativeI18n.t(expected));
+    } finally { screen.close(); }
+  });
+}
+
 test('privacy Activity labels the operation and omits its pool denomination when balances are hidden', () => {
   const screen = presentationFixture();
   try {
