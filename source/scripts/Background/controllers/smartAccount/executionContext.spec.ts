@@ -385,6 +385,7 @@ describe('smart-account execution approval context', () => {
       return { hash: HASH, wait: async () => undefined };
     });
     await submit(prepared, {}, () => undefined, true);
+    expect(send.mock.calls[0][0].gasLimit).toBe('25200');
     expect(
       send.mock.calls.map(([tx]) => ({
         to: tx.to,

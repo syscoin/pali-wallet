@@ -492,6 +492,27 @@ describe('host-owned fixed fee prices', () => {
     }
   );
 
+  test.each([false, true])(
+    'admits a prefund estimate within the reviewed allowance and rejects a larger estimate, legacy=%s',
+    async (legacy) => {
+      const f = fixture(legacy);
+      const read = f.ports.read;
+      let estimate = 21_001;
+      f.ports.read = (method, params) =>
+        method === 'eth_estimateGas'
+          ? Promise.resolve('0x' + estimate.toString(16))
+          : read(method, params);
+      const request = { ...input(legacy), data: '0x', gasLimit: '25200' };
+      const ports = { ...f.ports, feePolicy: 'fixed' as const };
+      const quote = await prepareEvmDappQuote(request, ports);
+      expect(quote.transaction.gasLimit).toBe('25200');
+      estimate = 25_201;
+      await expect(prepareEvmDappQuote(request, ports, quote)).rejects.toThrow(
+        'REVIEW_REQUIRED'
+      );
+    }
+  );
+
   test.each([{}, { maxFeePerGas: '3' }, { maxPriorityFeePerGas: '1' }])(
     'rejects incomplete fixed prices %j',
     async (partial) => {

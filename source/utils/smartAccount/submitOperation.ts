@@ -53,7 +53,10 @@ import {
 } from './prepareOperation.ts';
 import { getSmartAccountUserOpHash } from './userOperationHash.ts';
 import type { EvmAutoNonceSnapshot } from '../../shared/evmAutoNonce.ts';
-import type { SmartAccountFeeOverrides } from '../../shared/smartAccountFeeQuote';
+import type {
+  SmartAccountFeeOverrides,
+  SmartAccountPayerBudget,
+} from '../../shared/smartAccountFeeQuote';
 import type {
   IKeyringAccountState,
   ISmartAccountMetadata,
@@ -124,7 +127,7 @@ export type SmartAccountSubmitHost<
       assertCurrentContext(): void;
       onAcknowledged(): void;
       onSubmissionAttempt(): void;
-      reviewedPayerFees?: SmartAccountFeeOverrides;
+      reviewedPayerFees?: SmartAccountFeeOverrides & { gasLimit?: string };
     }
   ): Promise<void>;
   getExecutionContext(id: string):
@@ -135,7 +138,7 @@ export type SmartAccountSubmitHost<
         feeDisplayBlock?: import('../../shared/evmDappPreparation.ts').EvmDappFeeDisplayBlock;
         gasPrice?: string;
         replaceOuter?: boolean;
-        useReviewedPayerFees?: true;
+        reviewedPayerBudget?: SmartAccountPayerBudget;
         userOperation: SmartAccountPackedUserOperation;
       }
     | undefined;
@@ -329,7 +332,7 @@ async function submitOwnedSmartAccountOperation<
             maxFeePerGas: params.maxFeePerGas,
             maxPriorityFeePerGas: params.maxPriorityFeePerGas,
           }
-        : executionContext?.useReviewedPayerFees &&
+        : executionContext?.reviewedPayerBudget &&
           params.maxFeePerGas !== undefined
         ? { gasPrice: params.maxFeePerGas }
         : undefined;
@@ -496,6 +499,17 @@ async function submitOwnedSmartAccountOperation<
         });
       });
       assertCurrent();
+      // Carry the displayed gas allowance into the fresh payer estimate.
+      // The estimator still rejects execution gas above this requested limit.
+      const fundingFee =
+        executionContext?.reviewedPayerBudget?.maximumPrefundFeeWei;
+      const fundingRate = BigInt(
+        payerFees?.gasPrice ?? payerFees?.maxFeePerGas ?? '0'
+      );
+      const fundingGasLimit =
+        fundingFee && BigInt(fundingFee) > BigInt(0) && fundingRate > BigInt(0)
+          ? (BigInt(fundingFee) / fundingRate).toString()
+          : undefined;
       await host.ensureDeploymentPrefund(
         active.account.address,
         signedUserOperation,
@@ -504,8 +518,13 @@ async function submitOwnedSmartAccountOperation<
         active.metadata.chainId,
         {
           ...submissionChecks,
-          ...(executionContext?.useReviewedPayerFees
-            ? { reviewedPayerFees: payerFees }
+          ...(executionContext?.reviewedPayerBudget
+            ? {
+                reviewedPayerFees: {
+                  ...payerFees,
+                  ...(fundingGasLimit ? { gasLimit: fundingGasLimit } : {}),
+                },
+              }
             : {}),
           assertBeforeSign: assertCurrent,
           assertCurrentContext: assertContext,

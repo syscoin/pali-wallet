@@ -714,6 +714,11 @@ export function createNativeSmartOperation(
           options.assertPendingStateIncludesAssets,
           options.smartAccountCancellation
         ).catch((error: unknown) => {
+          if (payerBudget && transactionMetadata?.smartAccountDeploymentPrefund === true &&
+              error instanceof EvmTransferReadError && error.code === 'REVIEW_REQUIRED') {
+            guard();
+            throw new Error(SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED);
+          }
           if (!(error instanceof EvmTransferReadError) || error.code !== 'UNAVAILABLE')
             throw error;
           guard();
@@ -815,7 +820,7 @@ export function createNativeSmartOperation(
               return {
                 accountId: account.id,
                 gasPrice: prepared.gasPrice,
-                ...(payerBudget ? { useReviewedPayerFees: true as const } : {}),
+                ...(payerBudget ? { reviewedPayerBudget: payerBudget } : {}),
                 expectedErc20Transfers: prepared.expectedErc20Transfers,
                 userOperation: prepared.userOperation,
                 ...(cancellation ? {cancellation,replaceOuter:Boolean(cancellationPayer?.replaceOuter)} : {}),

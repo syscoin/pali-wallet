@@ -1673,6 +1673,8 @@ test('real smart deployment reviews both payer costs once before durable SDK sub
     assert(BigInt(ready.payerBudget.maximumFeeWei) > 0n);
     assert(BigInt(ready.payerBudget.maximumPrefundWei) > 0n);
     assert(BigInt(ready.payerBudget.maximumPrefundFeeWei) > 0n);
+    // Anvil 1.7.1 reports 21,001 for this transfer; the approved 25,200 covers it.
+    f.fundingGasEstimate(21_001n);
     const beforeAuthorization = f.calls.length;
     await deployment.authorize(ready.revision);
     assert.deepEqual(f.calls.slice(beforeAuthorization).filter(method =>
@@ -1687,6 +1689,9 @@ test('real smart deployment reviews both payer costs once before durable SDK sub
     assert.equal(funding.from, owner);
     assert.equal(funding.to, smart.address);
     assert(funding.value > 0n);
+    assert.equal(funding.gasLimit, 25_200n);
+    assert.equal(funding.gasLimit * funding.maxFeePerGas!, BigInt(ready.payerBudget.maximumPrefundFeeWei));
+    assert(execution.gasLimit > funding.gasLimit);
     assert.equal(execution.from, owner);
     assert.equal(execution.nonce, funding.nonce + 1);
     assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === smart.id)!.smartAccount!.isDeployed, true);
@@ -1946,7 +1951,7 @@ for (const fee of ['funding', 'submission'] as const) test(`standalone deploy ca
     const ready = operation.getSnapshot();
     assert.equal(ready.phase, 'authorize');
     assert(ready.payerBudget);
-    if (fee === 'funding') f.fundingGasEstimate(2_000_000n);
+    if (fee === 'funding') f.fundingGasEstimate(25_201n);
     else f.payerGasEstimate(2_000_000n);
     await operation.authorize(ready.revision);
     assert.equal(operation.getSnapshot().error, 'PALI_SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED');

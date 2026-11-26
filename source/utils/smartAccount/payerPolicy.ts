@@ -241,7 +241,7 @@ export async function ensureSmartAccountDeploymentPrefund<
     assertCurrentContext: () => void;
     onAcknowledged: () => void;
     onSubmissionAttempt: () => void;
-    reviewedPayerFees?: SmartAccountFeeOverrides;
+    reviewedPayerFees?: SmartAccountFeeOverrides & { gasLimit?: string };
   }
 ): Promise<void> {
   const assertCurrent = () => {
