@@ -302,6 +302,8 @@ it('continues to charge distinct raw response bodies against the same operation 
 it.each([
   ['[]', 'UTXO_REVIEW_FUNDING_CHANGED'],
   ['{}', 'UTXO_FUNDING_UNAVAILABLE'],
+  ['{"utxos":[],"assets":[]}', 'UTXO_REVIEW_FUNDING_CHANGED'],
+  ['{"utxos":[null]}', 'UTXO_FUNDING_UNAVAILABLE'],
   ['{', 'UTXO_FUNDING_UNAVAILABLE'],
   ['[null]', 'UTXO_FUNDING_UNAVAILABLE'],
 ])('classifies reviewed funding response %s as %s', async (body, code) => {
@@ -319,4 +321,32 @@ it.each([
     transactionNotBroadcast: true,
   });
   expect(backend).toHaveBeenCalledTimes(1);
+});
+
+it('preserves the Syscoin asset funding envelope and checks its outpoints', async () => {
+  const txid = 'a'.repeat(64);
+  const body = JSON.stringify({
+    utxos: [{ txid, vout: 3, assetInfo: { assetGuid: '42', value: '5' } }],
+    assets: [{ assetGuid: '42', decimals: 8 }],
+  });
+  const backend = jest.fn(async (request: string) => reply(request, body));
+  const read = createOwnedUtxoBlockbookRead(
+    scope,
+    new AbortController().signal,
+    () => undefined,
+    backend
+  );
+  const response = await read.fetch(funding, {
+    method: 'GET',
+    signal: read.signal,
+  });
+  expect(await response.text()).toBe(body);
+  await expect(
+    read.assertReviewedInputsAvailable([`${txid}:3`])
+  ).resolves.toBeUndefined();
+  await expect(
+    read.assertReviewedInputsAvailable([`${txid}:2`])
+  ).rejects.toMatchObject({
+    code: 'UTXO_REVIEW_FUNDING_CHANGED',
+  });
 });

@@ -40,7 +40,8 @@ function fundingError(
 }
 
 function parseFundingOutpoints(body: string): Set<string> {
-  const rows: unknown = JSON.parse(body);
+  const payload = JSON.parse(body);
+  const rows: unknown = Array.isArray(payload) ? payload : payload?.utxos;
   if (!Array.isArray(rows)) throw new Error('Invalid funding response');
   const outpoints = new Set<string>();
   for (const row of rows) {
