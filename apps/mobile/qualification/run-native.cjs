@@ -249,7 +249,7 @@ async function ios() {
     const { startHttpCompanion } = require('./http-companion.cjs');
     httpCompanion = await startHttpCompanion({ walletConnectIdentity: require('../scripts/qualification-sdk.cjs').readWalletConnectSdkIdentity(path.join(__dirname, '..')), platform, sourceRevision: process.env.GITHUB_SHA, run });
   }
-  for (const scenario of (simulatorContract || fullSlhEnabled ? ['import'] : ['import', 'generate'])) {
+  for (const { scenario } of custodyCases) {
     const stage = createIosStageRecorder((evidence) => fs.writeFileSync(
       path.join(output, `ios-${scenario}-stages.json`), `${JSON.stringify(evidence, null, 2)}\n`));
     let device, container;
@@ -474,6 +474,15 @@ async function ios() {
   };
 }
 
+const custodyCases = [{ scenario: 'import' }];
+if (!simulatorContract && !fullSlhEnabled) {
+  if (platform === 'android') {
+    custodyCases.push({ scenario: 'generate', wordCount: 12 }, { scenario: 'generate', wordCount: 24 });
+  } else {
+    custodyCases.push({ scenario: 'generate' });
+  }
+}
+
 async function android() {
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
   if (!sdk) throw Error('Android SDK missing');
@@ -580,9 +589,7 @@ async function android() {
     httpCompanion = await startHttpCompanion({ walletConnectIdentity: require('../scripts/qualification-sdk.cjs').readWalletConnectSdkIdentity(path.join(__dirname, '..')), platform, sourceRevision: process.env.GITHUB_SHA, run });
   }
   const reports = [];
-  const cases = fullSlhEnabled ? [{ scenario: 'import' }] :
-    [{ scenario: 'import' }, { scenario: 'generate', wordCount: 12 }, { scenario: 'generate', wordCount: 24 }];
-  for (const { scenario, wordCount } of cases) {
+  for (const { scenario, wordCount } of custodyCases) {
     const label = wordCount === 24 ? 'generate-24' : scenario;
     const wordQuery = wordCount === 24 ? '&wordCount=24' : '';
     run('adb', ['uninstall', PACKAGE], true); // Dedicated test package only.
@@ -633,7 +640,7 @@ async function android() {
         wordCount
       );
       if (httpCompanion) {
-        const { post, ...evidence } = await httpCompanion.verify(httpRead, created.sessionId);
+        const { post, ...evidence } = await httpCompanion.verify(httpRead, created.sessionId, scenario === 'generate' ? created.mnemonicWordCount : undefined);
         fs.writeFileSync(path.join(output, `android-${label}-create-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
         fs.writeFileSync(path.join(output, `android-${label}-create-post.json`), `${JSON.stringify(post, null, 2)}\n`);
       }
@@ -666,7 +673,7 @@ async function android() {
         wordCount
       );
       if (httpCompanion) {
-        const { post, ...evidence } = await httpCompanion.verify(httpRead, restored.sessionId);
+        const { post, ...evidence } = await httpCompanion.verify(httpRead, restored.sessionId, scenario === 'generate' ? restored.mnemonicWordCount : undefined);
         fs.writeFileSync(path.join(output, `android-${label}-restart-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
         fs.writeFileSync(path.join(output, `android-${label}-restart-post.json`), `${JSON.stringify(post, null, 2)}\n`);
       }
@@ -894,7 +901,10 @@ async function android() {
   try {
     report = await (platform === 'ios' ? ios() : android());
     if (httpEnabled) {
-      httpCompanion.assertComplete(simulatorContract ? 1 : 4);
+      const phases = simulatorContract ? ['create'] : ['create', 'restart'];
+      const expected = custodyCases.flatMap(({ scenario, wordCount }) =>
+        phases.map(phase => [scenario, phase, wordCount].filter(Boolean).join(':')));
+      httpCompanion.assertComplete(expected);
       report.nativeHttpQualified = true;
       report.nativePostQualified = true;
     }

@@ -475,7 +475,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
   const { matchesHdRestartEvidence } = require('./hd-accounts.ts');
   const diagnostics = require('./log-diagnostics.cjs');
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
-  const start = source.indexOf('async function android()');
+  const start = source.indexOf('const custodyCases =');
   const end = source.indexOf('\n(async () => {', start);
   assert(start >= 0 && end > start);
   const exercise = async (change = {}) => {
@@ -501,7 +501,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
     const android = runInNewContext(source.slice(start, end) + '\nandroid;', {
       process: { env: { ANDROID_HOME: '/public-sdk' } },
       httpEnabled: false, httpCompanion: undefined,
-      fullSlhEnabled: false, fullSlhConfiguration: null,
+      simulatorContract: false, fullSlhEnabled: false, fullSlhConfiguration: null,
       publicPoolBuild: undefined,
       privateProofBuild: undefined,
       httpRead: undefined, captureHttpDiagnostic: async () => undefined,

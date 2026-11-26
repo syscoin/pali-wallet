@@ -159,7 +159,7 @@ The source-map preservation CLI checks every embedded project source against
 the exact build checkout and retains the prior c960 project modules, the three
 POST modules and the shared wallet modules listed in `post-evidence.cjs`. Native artifact
 review must retain that complete binding, independently hash the lockfile and
-ZIP/map bytes, verify all five launch pairs, and preserve all Android custody
+ZIP/map bytes, verify all seven hosted launch pairs (six Android, one iOS), and preserve all Android custody
 and restart checks. On iOS the original storage-refusal report stays failed,
 with `custodyQualified: false` and `sdkSmokeVerified: false`, even when both
 transport gates pass. No native pass is claimed by the Node controls alone.

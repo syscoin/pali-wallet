@@ -62,7 +62,7 @@ for (const mode of ['excess', 'out-of-order']) test(`real child retains per-requ
     audit.invalid = observed.invalid; audit.counts['post-balance'] = observed.counts['post-balance'];
     audit.requests.splice(0, 2, ...observed.requests);
     assert.throws(() => assertPostAudit(audit, token, port), /POST_FIXTURE_AUDIT_FAILED/);
-    assert.equal(companion.records.length, 0); assert.throws(() => companion.assertComplete(1));
+    assert.equal(companion.records.length, 0); assert.throws(() => companion.assertComplete(['import:create']));
   } finally {
     for (const request of requests) request.destroy();
     await companion.close();

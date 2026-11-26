@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { EventEmitter, once } = require('node:events');
 const { Buffer } = require('node:buffer');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -399,7 +399,7 @@ function childControl(snapshot = (value) => value) {
   queueMicrotask(() => child.emit('message', { kind: 'ready', port: 45454 }));
   return child;
 }
-test('companion owns only one reverse mapping and requires matching sidecar/session before completion', async () => {
+test('Android companion verifies one reverse mapping and all three custody cases by phase and session', async () => {
   const commands = []; let child, mapped = false;
   const companion = await startHttpCompanion({ platform: 'android', sourceRevision: build.sourceRevision,
     run: (command, args) => {
@@ -410,7 +410,7 @@ test('companion owns only one reverse mapping and requires matching sidecar/sess
       return args.includes('--list') && mapped ? 'emulator-5554 tcp:45454 tcp:45454' : '';
     }, spawn: () => (child = childControl()) });
   try {
-    assert.throws(() => companion.assertComplete(1));
+    assert.throws(() => companion.assertComplete(['import:create']));
     const suffix = await companion.begin('create', 'import');
     const token = new URLSearchParams(suffix).get('httpToken');
     const value = { ...report(), token, platform: 'android', lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') };
@@ -418,7 +418,19 @@ test('companion owns only one reverse mapping and requires matching sidecar/sess
     await assert.rejects(companion.verify(readBoth(value), '22222222-2222-2222-2222-222222222222'));
     await assert.rejects(companion.verify(name => name.includes('native-post-') ? undefined : JSON.stringify(value), value.sessionId), /POST_QUALIFICATION_REPORT_INVALID/);
     await companion.verify(readBoth(value), value.sessionId);
-    companion.assertComplete(1);
+    companion.assertComplete(['import:create']);
+    const phases = ['import:create', 'import:restart', 'generate:create:12',
+      'generate:restart:12', 'generate:create:24', 'generate:restart:24'];
+    for (const key of phases.slice(1)) {
+      assert.throws(() => companion.assertComplete(phases), /HTTP_QUALIFICATION_INCOMPLETE/);
+      const [scenario, phase, length] = key.split(':');
+      const token = new URLSearchParams(await companion.begin(phase, scenario)).get('httpToken');
+      const sidecar = { ...value, scenario, phase, token, sessionId: randomUUID() };
+      await companion.verify(readBoth(sidecar), sidecar.sessionId, length ? Number(length) : undefined);
+    }
+    companion.assertComplete(phases);
+    companion.records.at(-1).mnemonicWordCount = 12;
+    assert.throws(() => companion.assertComplete(phases), /HTTP_QUALIFICATION_INCOMPLETE/);
   } finally { await companion.close(); }
   assert.deepEqual(commands.map(([, args]) => args), [['get-serialno'], ['-s', 'emulator-5554', 'shell', 'getprop', 'ro.kernel.qemu'],
     ['-s', 'emulator-5554', 'reverse', '--list'], ['-s', 'emulator-5554', 'reverse', '--no-rebind', 'tcp:45454', 'tcp:45454'],
@@ -435,7 +447,7 @@ test('final snapshot is authoritative when traffic changes after a clean inspect
     const value = { ...report(), token, lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') };
     await assert.rejects(companion.verify(readBoth(value), value.sessionId), /AUDIT_FAILED/);
     assert.equal(child.lastSnapshot.counts.target, 1);
-    assert.equal(companion.records.length, 0); assert.throws(() => companion.assertComplete(1));
+    assert.equal(companion.records.length, 0); assert.throws(() => companion.assertComplete(['import:create']));
     assert.equal((await companion.diagnostics()).http.server.counts.target, 1);
   } finally { await companion.close(); }
 });
@@ -448,7 +460,7 @@ test('a valid final snapshot is the exact audit recorded for qualification', asy
     const value = { ...report(), token, lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') };
     const recorded = await companion.verify(readBoth(value), value.sessionId);
     assert.equal(recorded.audit, child.lastSnapshot);
-    companion.assertComplete(1);
+    companion.assertComplete(['import:create']);
   } finally { await companion.close(); }
 });
 test('reverse collision never removes someone else mapping; cleanup error still terminates child', async () => {
@@ -549,7 +561,7 @@ test('real child IPC, same-source sidecar, server audit and shutdown compose wit
     const post = await qualifyNativePost({ launch, build: { ...build, lockfileSha256: value.lockfileSha256 },
       walletFetch: createNativeHttpFetch(fetch), phase: 'create', scenario: 'import', platform: 'ios', sessionId: value.sessionId, networkCalls: () => 0 });
     await companion.verify(name => JSON.stringify(name.includes('native-post-') ? post : value), value.sessionId);
-    companion.assertComplete(1);
+    companion.assertComplete(['import:create']);
   } finally { await companion.close(); }
   await assert.rejects(fetch(endpoint));
 });
@@ -567,7 +579,7 @@ test('real child partial diagnostics are bounded, source-bound and never pass ev
     assert.equal(diagnostic.failedCase, 'abort-stream'); assert.equal(diagnostic.status, 'failed'); assert.equal(diagnostic.diagnosticOnly, true);
     assert.equal(diagnostic.server.counts.exact, 1); assert.equal(diagnostic.server.counts.target, 0); assert.equal(diagnostic.server.closed.body, false);
     assert(Buffer.byteLength(JSON.stringify(diagnostic)) < 8192);
-    assert.throws(() => companion.assertComplete(1)); assert.throws(() => assertHttpReport(failed, expected));
+    assert.throws(() => companion.assertComplete(['import:create'])); assert.throws(() => assertHttpReport(failed, expected));
     assert.equal(httpDiagnosticCase({ ...failed, failedCase: 'untrusted arbitrary text' }, { ...expected, token: launch.token }), undefined);
     const failureDetail = { stage: 'eof', status: 200, byteCount: 65550, chunkKind: 'undefined', chunkBytes: null, mismatchIndex: null, rejection: 'assertion' };
     const snapshotFailed = { ...failed, failedCase: 'public-snapshot-bridge', failureDetail };
@@ -607,7 +619,7 @@ test('one owned inspection distinguishes unavailable counters from confirmed zer
       assert.equal(diagnostic.server, null);
       assert(!JSON.stringify(diagnostic).includes('private read failure'));
     }
-    assert.throws(() => companion.assertComplete(1));
+    assert.throws(() => companion.assertComplete(['import:create']));
   } finally { await companion.close(); }
 });
 test('diagnostics recognize a real fixture child that exited before inspection', async () => {
@@ -625,7 +637,7 @@ test('diagnostics recognize a real fixture child that exited before inspection',
       assert.equal(diagnostic.server, null);
       assert.equal(diagnostic.diagnosticOnly, true);
     }
-    assert.throws(() => companion.assertComplete(1));
+    assert.throws(() => companion.assertComplete(['import:create']));
   } finally { await companion.close(); }
 });
 test('late or wrong-token server evidence cannot satisfy a new native phase', () => {
