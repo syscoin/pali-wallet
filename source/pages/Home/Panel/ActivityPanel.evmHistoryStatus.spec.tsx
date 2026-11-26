@@ -711,6 +711,15 @@ it('keeps RPC-only placement on failed canonical read, shares headers, and stops
   expect(
     currentRows().every((row: any) => row.blockHash === transaction.blockHash)
   ).toBe(true);
+  // The next popup tick can reach the worker earlier than the preceding one.
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(13_500);
+    await mockWallet.refreshTransactionHistory(
+      getWalletNavigationScope(),
+      'visible'
+    );
+  });
+  expect(provider.getBlock).toHaveBeenCalledTimes(2);
   await act(async () => jest.advanceTimersByTimeAsync(60_000));
   expect(provider.getBlock).toHaveBeenCalledTimes(2);
 });

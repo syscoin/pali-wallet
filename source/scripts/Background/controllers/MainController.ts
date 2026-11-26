@@ -9944,8 +9944,9 @@ class MainController {
           vault.activeAccount.id
         ]?.ethereum?.[vault.activeNetwork.chainId];
       if (
+        // Allow delivery jitter between the popup's 15s ticks and this worker.
         (this.lastVisibleRpcRead?.key === key &&
-          startedAt - this.lastVisibleRpcRead.startedAt < 15_000) ||
+          startedAt - this.lastVisibleRpcRead.startedAt < 14_000) ||
         !rows?.some((row) => needsVisibleEvmPlacementCheck(row, startedAt))
       )
         return Promise.resolve();
