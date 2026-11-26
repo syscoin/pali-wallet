@@ -4,7 +4,6 @@ import { NativeSmartAccountOperationScreen } from '../../src/screens/NativeSmart
 import type {
   NativeSmartAccountOperation,
   NativeSmartAccountOperationSnapshot,
-  SmartAccountPayerReview,
 } from '../../src/smartAccount/operation';
 import { Button, Header, Screen, Text } from '../../src/ui';
 import { TransactionDetailLayout } from '../../src/screens/TransactionDetailLayout';
@@ -24,8 +23,6 @@ const maximumPrefundUnits = longValues
 type FixturePhase =
   | 'authorize'
   | 'pending-predecessor'
-  | 'fund-account'
-  | 'submit-deployment'
   | 'waiting'
   | 'complete'
   | 'failed';
@@ -50,6 +47,7 @@ let snapshot: NativeSmartAccountOperationSnapshot = {
     testnet: false,
   }),
   maximumPrefundUnits,
+  payerBudget: { address: payer, gasTank: false, maximumFeeWei: maximumFeeUnits, maximumPrefundWei: maximumPrefundUnits, maximumPrefundFeeWei: maximumFeeUnits },
   userOperationHash: '0x' + 'cd'.repeat(32),
   authorization: {
     entryPoint,
@@ -63,46 +61,11 @@ let snapshot: NativeSmartAccountOperationSnapshot = {
   error: null,
 };
 
-function payerReview(
-  purpose: SmartAccountPayerReview['purpose']
-): SmartAccountPayerReview {
-  const value = purpose === 'fund-account' ? maximumPrefundUnits : '0';
-  return {
-    id: purpose === 'fund-account' ? 8 : 9,
-    purpose,
-    maximumFeeUnits,
-    coveredFeeUnits: '0',
-    maximumTotalUnits: (BigInt(value) + BigInt(maximumFeeUnits)).toString(),
-    transaction: {
-      chainId: snapshot.network.chainId,
-      from: payer,
-      to: purpose === 'fund-account' ? account : entryPoint,
-      nonce: '0',
-      value,
-      data: purpose === 'fund-account' ? '0x' : '0x1234',
-      gasLimit: '21000',
-      type: 2,
-      maxFeePerGas: '20000000000',
-      maxPriorityFeePerGas: '1000000000',
-      accessList: [],
-    },
-  };
-}
-
 function show(phase: FixturePhase) {
   snapshot = Object.freeze({
     ...snapshot,
     revision: snapshot.revision + 1,
-    phase:
-      phase === 'pending-predecessor'
-        ? 'preparing'
-        : phase === 'fund-account' || phase === 'submit-deployment'
-        ? 'review-fee'
-        : phase,
-    payerReview:
-      phase === 'fund-account' || phase === 'submit-deployment'
-        ? payerReview(phase === 'submit-deployment' ? 'submit-operation' : phase)
-        : null,
+    phase: phase === 'pending-predecessor' ? 'preparing' : phase,
     transactionHash: ['waiting', 'complete', 'failed'].includes(phase)
       ? transactionHash
       : null,
@@ -120,8 +83,6 @@ function show(phase: FixturePhase) {
 const phases: FixturePhase[] = [
   'authorize',
   'pending-predecessor',
-  'fund-account',
-  'submit-deployment',
   'waiting',
   'complete',
   'failed',
@@ -143,11 +104,7 @@ const controller = {
   },
   async authorize(revision: number) {
     calls.push({ method: 'authorize', value: revision });
-    show('fund-account');
-  },
-  confirmPayer(id: number) {
-    calls.push({ method: 'confirmPayer', value: id });
-    show(id === 8 ? 'submit-deployment' : 'waiting');
+    show('waiting');
   },
   dispose() {
     calls.push({ method: 'dispose' });

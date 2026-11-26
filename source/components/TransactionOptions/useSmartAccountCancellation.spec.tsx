@@ -241,6 +241,27 @@ it('opens the existing cancellation review from a signed-only operation menu', a
   expect(mockSubmit).not.toHaveBeenCalled();
 });
 
+it('explains why cancelling a standalone registration would deploy it before asking for approval', async () => {
+  mockEmitter
+    .mockResolvedValueOnce(7)
+    .mockRejectedValueOnce(
+      new Error('SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED')
+    );
+  render(<SmartAccountSignedOperationOptions operationHash={OPERATION} />);
+  fireEvent.click(
+    screen.getByRole('button', { name: en.transactions.transactionOptions })
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: en.buttons.cancel }));
+  await waitFor(() =>
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      en.transactions.smartRegistrationCancelUnavailable
+    )
+  );
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(mockSubmit).not.toHaveBeenCalled();
+  expect(mockAlert.warning).not.toHaveBeenCalled();
+});
+
 it.each([true, false])(
   'offers only a live Smart cancellation from a mined transaction menu when eligible is %s',
   async (eligible) => {

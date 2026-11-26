@@ -5,6 +5,7 @@ import {
   observeEvmTransaction,
   readEvmRpcQuantity,
 } from '../shared/evmTransactionObservation.ts';
+import { SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED } from '../shared/smartAccountFeeQuote.ts';
 import { getAddress, toBeHex } from '../utils/ethersV6Compat.ts';
 import {
   getPaliEntryPointAddress,
@@ -194,6 +195,16 @@ export function assertSmartAccountCancellationOperation(
     !isSmartAccountRevocationOperation(operation)
   )
     unavailable();
+  const original = value.authorization.userOperation;
+  if (
+    operation.initCode !== '0x' &&
+    original.initCode !== '0x' &&
+    isSmartAccountRevocationOperation(original)
+  )
+    throw Object.assign(
+      new Error(SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED),
+      { transactionNotBroadcast: true }
+    );
 }
 
 /** Revoke only this account's full nonce; other keys/nonces remain guarded. */

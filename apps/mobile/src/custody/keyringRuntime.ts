@@ -1,3 +1,4 @@
+import isEqual from 'lodash/isEqual.js';
 import { createBoundedRpcFetch } from './boundedRpcFetch.ts';
 import { createSmartAccountInfrastructureReader } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
 import { createRpcReadCapabilitiesOwner } from '../../../../source/shared/rpcReadCapabilities.ts';
@@ -1463,7 +1464,7 @@ export function createKeyringRuntimeFactory(
             ...(gasPolicy.kind === 'private-deposit'
               ? { gasPolicy: { kind: 'fixed', gasLimit: PRIVACY_DEPOSIT_GAS_LIMIT }, estimateAfterAuthorization: true }
               : { gasPolicy }),
-            feePolicy: metadata?.smartAccountExecution === true && (normalized.gasPrice !== undefined ||
+            feePolicy: (metadata?.smartAccountExecution === true || metadata?.smartAccountDeploymentPrefund === true) && (normalized.gasPrice !== undefined ||
               (normalized.maxFeePerGas !== undefined && normalized.maxPriorityFeePerGas !== undefined)) ? 'fixed' : undefined,
             assertRefreshedState: finalAdmissionIncludesAssets === true &&
               (metadata?.smartAccountExecution === true || metadata?.smartAccountDeploymentPrefund === true)
@@ -4620,12 +4621,18 @@ export function createKeyringRuntimeFactory(
                 module.type === 'validator' && module.id === 'p256-webauthn'
                   ? { ...module, config: { ...module.config, credentialId: observedPasskey.credentialId, credentialIdHash: observedPasskey.credentialIdHash,
                     passkeyName: observedPasskey.passkeyName, ...(observedPasskey.backupStatus ? { backupStatus: observedPasskey.backupStatus } : {}) } } : module);
+              check();
+              const observed = { auth: metadata.auth, availableModules: metadata.availableModules,
+                isDeployed: metadata.isDeployed === true, installedModules: metadata.installedModules };
+              const saved = account.smartAccount;
+              if (saved.isDeployed === observed.isDeployed && isEqual(saved.auth, observed.auth) &&
+                  isEqual(saved.availableModules, observed.availableModules) && isEqual(saved.installedModules, observed.installedModules))
+                return observation;
               const committed = await run(async () => {
                 // A read may be cancelled before this queued mutation starts.
                 try { check(); } catch { return false; }
                 const next = await catalogue.mutate(snapshot.revision, { kind: 'refresh-smart-metadata', id: selected.id,
-                  metadata: { auth: metadata.auth, availableModules: metadata.availableModules,
-                    isDeployed: metadata.isDeployed === true, installedModules: metadata.installedModules } }, check);
+                  metadata: observed }, check);
                 check(); publishAccounts(next);
                 try { onPublished?.(); } catch { /* UI bookkeeping cannot undo committed public metadata. */ }
                 return true;

@@ -28,6 +28,7 @@ import { INetworkType, KeyringAccountType } from 'types/network';
 import { BigNumber, Contract, Interface } from 'utils/ethersV6Compat';
 import {
   buildSmartAccountUserOperation,
+  getPaliEntryPointAddress,
   paliEntryPointInterface,
   encodeEcdsaValidatorInitData,
   encodeSmartAccountGasFees,
@@ -356,7 +357,7 @@ describe('smart-account execution approval context', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it('quotes an independent first-use funding transfer and gas cap when needed', async () => {
+  it('uses the reviewed payer fee rate for both first-use funding and handleOps', async () => {
     state.vault.accounts.SmartAccount[7].smartAccount =
       identity.account.smartAccount;
     controller.assertInfrastructureSupported = jest.fn();
@@ -379,6 +380,25 @@ describe('smart-account execution approval context', () => {
       maximumPrefundWei: '299999999999999',
     });
     expect(send).not.toHaveBeenCalled();
+    send.mockImplementation(async (_tx, _legacy, _payer, _meta, options) => {
+      options.assertCurrentContext();
+      return { hash: HASH, wait: async () => undefined };
+    });
+    await submit(prepared, {}, () => undefined, true);
+    expect(send.mock.calls[0][0].gasLimit).toBe('25200');
+    expect(
+      send.mock.calls.map(([tx]) => ({
+        to: tx.to,
+        maxFeePerGas: tx.maxFeePerGas,
+        maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
+      }))
+    ).toEqual(
+      [ADDRESS, getPaliEntryPointAddress(1)].map((to) => ({
+        to,
+        maxFeePerGas: '1000000000',
+        maxPriorityFeePerGas: '1',
+      }))
+    );
   });
 
   it('uses freshly observed deployment and caches hydrated metadata under the exact context', async () => {

@@ -5,7 +5,7 @@ import {
   type Request,
   type Route,
 } from '@playwright/test';
-import { Interface, keccak256, Transaction } from 'ethers';
+import { Interface, keccak256, parseEther, Transaction } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -528,21 +528,81 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         const before = output.broadcasts.length;
         mark('prefund:confirm');
         await register.click();
-        await approveSmartAccountFeeReview(page, {
-          kind: 'entry-point',
-          account,
-          payer: account,
-          chainId: chain.chainId,
-          symbol: currency,
-        });
-        for (let envelope = 0; envelope < 2; envelope++)
+        let reviewed:
+          | {
+              accountFee: bigint;
+              deposit: bigint;
+              depositFee: bigint;
+              payerFee: bigint;
+            }
+          | undefined;
+        if (process.env.PALI_RPC_REFERENCE) {
+          // Historical artifacts review each payer envelope after signing.
           await approveSmartAccountFeeReview(page, {
-            kind: 'payer',
+            kind: 'entry-point',
             account,
-            payer,
+            payer: account,
             chainId: chain.chainId,
             symbol: currency,
           });
+          for (let envelope = 0; envelope < 2; envelope++)
+            await approveSmartAccountFeeReview(page, {
+              kind: 'payer',
+              account,
+              payer,
+              chainId: chain.chainId,
+              symbol: currency,
+            });
+        } else {
+          const dialog = page.getByRole('dialog').filter({
+            has: page.getByRole('heading', {
+              name: en.settings.smartAccountFeeReviewTitle,
+              exact: true,
+            }),
+          });
+          await expect(dialog).toBeVisible({ timeout: 30000 });
+          const value = (label: string) =>
+            dialog
+              .getByText(label, { exact: true })
+              .locator('..')
+              .locator('dd');
+          const amount = async (label: string) => {
+            const text = (await value(label).innerText()).trim();
+            const [units, symbol] = text.split(' ');
+            expect(symbol).toBe(currency);
+            return parseEther(units);
+          };
+          await expect(
+            value(en.settings.smartAccountFeeReviewSelectedAccount)
+          ).toHaveText(account, { ignoreCase: true });
+          await expect(value(en.smartAccountHub.accountAddress)).toHaveText(
+            account,
+            { ignoreCase: true }
+          );
+          await expect(value(en.nftDetails.network)).toHaveText(
+            String(chain.chainId)
+          );
+          await expect(
+            dialog
+              .getByText(en.transactions.feePayer, { exact: true })
+              .locator('..')
+              .getByText(new RegExp('^' + payer + '$', 'i'))
+          ).toBeVisible();
+          reviewed = {
+            accountFee: await amount(en.send.smartAccountMaxFee),
+            payerFee: await amount(en.transactions.replay.maximumFee),
+            deposit: await amount(
+              en.transactions.smartAccountCancelMaximumDeposit
+            ),
+            depositFee: await amount(
+              en.transactions.smartAccountCancelMaximumDepositFee
+            ),
+          };
+          expect(output.broadcasts.length).toBe(before);
+          await dialog
+            .getByRole('button', { name: 'Confirm', exact: true })
+            .click();
+        }
         await expect
           .poll(() => output.broadcasts.length, { timeout: 45000 })
           .toBe(before + 2);
@@ -570,6 +630,14 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         expect(BigInt(funding.value)).toBe(
           BigInt(getSmartAccountUserOpRequiredPrefund(operations[0]).toString())
         );
+        if (reviewed) {
+          expect(BigInt(funding.value)).toBe(reviewed.accountFee);
+          expect(BigInt(funding.value)).toBe(reviewed.deposit);
+          const maximumFee = (tx: typeof funding) =>
+            BigInt(tx.gas) * BigInt(tx.maxFeePerGas ?? tx.gasPrice);
+          expect(maximumFee(funding)).toBeLessThanOrEqual(reviewed.depositFee);
+          expect(maximumFee(operation)).toBeLessThanOrEqual(reviewed.payerFee);
+        }
         expect(BigInt(operation.nonce)).toBe(BigInt(funding.nonce) + BigInt(1));
         expect(
           await localRpc(chain.url, 'eth_getCode', [account, 'latest'])

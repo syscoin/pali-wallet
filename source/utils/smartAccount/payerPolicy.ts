@@ -21,6 +21,7 @@ import type {
   SmartAccountSubmissionChecks,
   SmartAccountSubmitHost,
 } from './submitOperation.ts';
+import type { SmartAccountFeeOverrides } from '../../shared/smartAccountFeeQuote';
 import type {
   IKeyringAccountState,
   KeyringAccountType,
@@ -240,6 +241,7 @@ export async function ensureSmartAccountDeploymentPrefund<
     assertCurrentContext: () => void;
     onAcknowledged: () => void;
     onSubmissionAttempt: () => void;
+    reviewedPayerFees?: SmartAccountFeeOverrides & { gasLimit?: string };
   }
 ): Promise<void> {
   const assertCurrent = () => {
@@ -260,12 +262,13 @@ export async function ensureSmartAccountDeploymentPrefund<
   options.onSubmissionAttempt();
   const response = await send(
     {
+      ...options.reviewedPayerFees,
       chainId,
       from: gasPayer.address,
       to: getAddress(accountAddress),
       value: shortfall.toHexString(),
     },
-    false,
+    options.reviewedPayerFees?.gasPrice !== undefined,
     { id: gasPayer.id, type: gasPayer.type },
     {
       smartAccountAddress: getAddress(accountAddress),

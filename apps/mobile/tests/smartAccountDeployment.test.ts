@@ -166,7 +166,7 @@ function fixture(authorizationExpiresAt = freshSmartOperationDeadline()) {
   };
 }
 
-test('deployment requires separate exact UserOperation and payer approvals', async () => {
+test('operation controller honors an explicit payer review requested by its host', async () => {
   const f = fixture();
   try {
     await f.model.prepare();

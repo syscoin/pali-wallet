@@ -173,50 +173,22 @@ const text = (tree: Element) =>
     )
     .join(' ');
 
-test('deployment screen separates exact account authorization from payer confirmation', () => {
+test('deployment screen reviews the account and payer costs before authorizing', () => {
   const f = fixture();
+  const address = '0x3333333333333333333333333333333333333333';
+  f.update({ payerBudget: { address, gasTank: false, maximumFeeWei: '42000', maximumPrefundFeeWei: '21000', maximumPrefundWei: '3000000000000000' } });
   let tree = f.render();
   assert.match(text(tree), /0.003 ETH/);
-  assert.equal(
-    all(tree).some((node) => node.props.title === 'Confirm deployment'),
-    false
-  );
+  assert.match(text(tree), /0.000000000000042 ETH/);
+  assert.match(text(tree), /0.000000000000021 ETH/);
+  assert.match(text(tree), new RegExp(address));
   button(tree, 'View authorization details')();
   tree = f.render();
   assert.match(text(tree), /0xab/);
   assert.match(text(tree), /0xcd/);
-  button(tree, 'Authorize deployment')();
+  button(tree, 'Deploy smart account')();
   assert.deepEqual(f.calls.authorize, [4]);
-  f.update({
-    phase: 'review-fee',
-    payerReview: {
-      id: 8,
-      purpose: 'submit-operation',
-      coveredFeeUnits: '0', maximumFeeUnits: '42000',
-      maximumTotalUnits: '42000',
-      transaction: {
-        chainId: '1',
-        from: '0x3333333333333333333333333333333333333333',
-        to: '0x2222222222222222222222222222222222222222',
-        nonce: '0',
-        value: '0',
-        data: '0xab',
-        gasLimit: '21000',
-        type: 2,
-        maxFeePerGas: '2',
-        maxPriorityFeePerGas: '1',
-        accessList: [],
-      },
-    },
-  });
-  tree = f.render();
-  assert.match(text(tree), /0x3333333333333333333333333333333333333333/);
-  assert.equal(
-    all(tree).some((node) => node.props.title === 'Authorize deployment'),
-    false
-  );
-  button(tree, 'Confirm deployment')();
-  assert.deepEqual(f.calls.confirm, [8]);
+  assert.deepEqual(f.calls.confirm, []);
   button(tree, 'Close')();
   assert.equal(f.calls.close, 1);
 });
