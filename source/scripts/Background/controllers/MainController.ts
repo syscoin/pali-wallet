@@ -95,6 +95,7 @@ import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
 import {
   getEvmExplorerHasMore,
   isEvmHistoryIncomplete,
+  needsVisibleEvmPlacementCheck,
 } from '../../../shared/evmHistory';
 import {
   readFreshEvmState,
@@ -771,6 +772,7 @@ class MainController {
     promise: Promise<void>;
     scope: IWalletNavigationScope;
   };
+  private lastVisibleRpcRead?: { key: string; startedAt: number };
   private latestUpdate?: object;
   private isNetworkSwitchMainStateDirty = false;
   private smartAccount: SmartAccountController;
@@ -9911,9 +9913,10 @@ class MainController {
     this.assertWalletReadyForSigning();
     const scope = getWalletNavigationScope();
     const { vault, vaultGlobal } = store.getState();
+    const rpcOnly = !vault.isBitcoinBased && !vault.activeNetwork.apiUrl;
     if (
       !this.isUnlocked() ||
-      (!vault.isBitcoinBased && !vault.activeNetwork.apiUrl) ||
+      (rpcOnly && onlyIfMissing !== 'visible') ||
       vaultGlobal.isSwitchingAccount ||
       vaultGlobal.networkStatus === 'switching' ||
       vaultGlobal.networkStatus === 'connecting' ||
@@ -9933,7 +9936,22 @@ class MainController {
       status?.scope.account === scope.account &&
       status.scope.network === scope.network;
     const visible = onlyIfMissing === 'visible';
-    if (
+    if (visible && rpcOnly) {
+      const key = JSON.stringify([generation, scope.account, scope.network]);
+      const startedAt = Date.now();
+      const rows =
+        vault.accountTransactions[vault.activeAccount.type]?.[
+          vault.activeAccount.id
+        ]?.ethereum?.[vault.activeNetwork.chainId];
+      if (
+        // Allow delivery jitter between the popup's 15s ticks and this worker.
+        (this.lastVisibleRpcRead?.key === key &&
+          startedAt - this.lastVisibleRpcRead.startedAt < 14_000) ||
+        !rows?.some((row) => needsVisibleEvmPlacementCheck(row, startedAt))
+      )
+        return Promise.resolve();
+      this.lastVisibleRpcRead = { key, startedAt };
+    } else if (
       visible
         ? vault.isBitcoinBased ||
           !sameScope ||
@@ -10216,7 +10234,8 @@ class MainController {
                   `${session}:${networkRequest}`,
                   isCurrentRead,
                   bypassCompletedCache,
-                  historyAbort.signal
+                  historyAbort.signal,
+                  retainHistoryStatus && !activeNetwork.apiUrl
                 );
             } catch (error) {
               // Locally acknowledged Smart Account transactions can settle

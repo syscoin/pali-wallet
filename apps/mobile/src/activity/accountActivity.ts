@@ -165,9 +165,9 @@ export class AccountActivityController {
             const current = guarded(guard);
             return this.reads.run(signal, current, () => target.observeSmartAuthorization!(scope, hash, current, signal));
           } } : {}),
-          observeLocal: (record, guard, signal, observe) => {
+          observeLocal: (record, guard, signal, observe, presentationOnly) => {
             const current = guarded(guard);
-            return this.reads.run(signal, current, () => target.observeLocal!(record, current, signal, observe));
+            return this.reads.run(signal, current, () => target.observeLocal!(record, current, signal, observe, presentationOnly));
           },
         };
       }
@@ -188,6 +188,10 @@ export class AccountActivityController {
           const current = guarded(guard);
           return this.reads.run(signal, current, () => receipts.read(hash, owner, signal, current, network, sharingScope));
         },
+        ...(receipts.blockHashAt ? { blockHashAt: (height, network, signal, guard) => {
+          const current = guarded(guard);
+          return this.reads.run(signal, current, () => receipts.blockHashAt!(height, network, signal, current));
+        } } : {}),
         ...(receipts.retainedWave ? { retainedWave: (network, sharingScope, signal, guard) =>
           receipts.retainedWave!(network, sharingScope, signal, guarded(guard)),
         } : {}),

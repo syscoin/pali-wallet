@@ -1101,6 +1101,78 @@ describe('smart account canonical overlap and adaptive ranges', () => {
     }
   );
 
+  it.each(['changed', 'same', 'unavailable'] as const)(
+    'checks the old header when a moved log has no available details (%s)',
+    async (evidence) => {
+      const newBlockHash = '0x' + 'ab'.repeat(32);
+      let available = false;
+      const provider = buildProvider({
+        getBlockNumber: jest.fn(async () => 102),
+        getLogs: jest.fn(async () => [
+          {
+            ...buildUserOpEventLog(true),
+            blockHash: newBlockHash,
+            blockNumber: 101,
+          },
+        ]),
+        send: jest.fn(async (method, params) => {
+          if (method === 'eth_getTransactionByHash') {
+            if (!available) throw Error('details unavailable');
+            return {
+              ...rawOuterTransaction,
+              blockNumber: '0x65',
+              blockHash: newBlockHash,
+            };
+          }
+          if (params[0] === '0x65')
+            return { number: '0x65', hash: newBlockHash, timestamp: '0x60' };
+          if (evidence === 'unavailable') throw Error('header unavailable');
+          return {
+            number: '0x63',
+            hash: evidence === 'changed' ? newBlockHash : BLOCK_HASH,
+          };
+        }),
+      });
+      const run = () =>
+        fetchSmartAccountUserOpTransactions(
+          provider,
+          vaultState.accounts.SmartAccount[0],
+          ACCOUNT_TYPE,
+          CHAIN_ID
+        );
+      const rows = await run();
+      expect(rows).toHaveLength(1);
+      expect(dispatchMock).not.toHaveBeenCalled();
+      if (evidence === 'changed') {
+        expect(rows[0]).toMatchObject({
+          hash: TX_HASH,
+          blockHash: null,
+          blockNumber: null,
+          status: 'pending',
+        });
+        expect(provider.send).not.toHaveBeenCalledWith(
+          'eth_getTransactionByHash',
+          [TX_HASH]
+        );
+        vaultState.accountTransactions.SmartAccount[0].ethereum[CHAIN_ID] =
+          rows;
+        available = true;
+        const moved = await run();
+        expect(moved).toHaveLength(1);
+        expect(moved[0]).toMatchObject({
+          hash: TX_HASH,
+          blockNumber: 101,
+          blockHash: newBlockHash,
+        });
+      } else
+        expect(rows[0]).toMatchObject({
+          hash: TX_HASH,
+          blockNumber: 99,
+          blockHash: BLOCK_HASH,
+        });
+    }
+  );
+
   it('does not reconcile cached rows outside a successfully covered overlap', async () => {
     const provider = buildProvider({
       getBlockNumber: jest.fn(async () => 102),

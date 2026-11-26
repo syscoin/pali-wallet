@@ -880,6 +880,14 @@ export class ActivityReceiptReader {
     );
   }
 
+  blockHashAt(number: string, registration: NativeNetworkRegistration, signal: AbortSignal, guard: () => void) {
+    return this.operation(registration, signal, guard, async read => {
+      const block = readBlock(await read('eth_getBlockByNumber', [tag(number), false]));
+      if (block.number !== number) return fail('CONTEXT_CHANGED');
+      return block.hash;
+    });
+  }
+
   private async operation<T>(
     registration: NativeNetworkRegistration,
     external: AbortSignal,

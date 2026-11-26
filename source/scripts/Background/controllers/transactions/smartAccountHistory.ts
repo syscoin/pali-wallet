@@ -530,24 +530,26 @@ export const fetchSmartAccountUserOpTransactions = async (
         .filter((tx: any) => tx?.hash)
         .map((tx: any) => [String(tx.hash).toLowerCase(), tx])
     );
-    const hashesToFetch = Array.from(successByTxHash.keys()).filter((hash) => {
-      const existing = vaultTxsByHash.get(hash);
-      // Skip outer transactions that are already confirmed in the vault; their
-      // confirmation counters are refreshed locally above.
-      if (!(existing?.blockNumber && existing?.blockHash)) {
-        return true;
+    const observedHashesToFetch = Array.from(successByTxHash.keys()).filter(
+      (hash) => {
+        const existing = vaultTxsByHash.get(hash);
+        // Skip outer transactions that are already confirmed in the vault; their
+        // confirmation counters are refreshed locally above.
+        if (!(existing?.blockNumber && existing?.blockHash)) {
+          return true;
+        }
+        // A shallow reorg inside the safety window can move an already-indexed
+        // transaction to a different block; refetch when the freshly scanned
+        // log's blockHash disagrees with the cached copy.
+        const logBlockHash = logBlockHashByTxHash.get(hash);
+        return Boolean(
+          logBlockHash &&
+            logBlockHash !== String(existing.blockHash).toLowerCase()
+        );
       }
-      // A shallow reorg inside the safety window can move an already-indexed
-      // transaction to a different block; refetch when the freshly scanned
-      // log's blockHash disagrees with the cached copy.
-      const logBlockHash = logBlockHashByTxHash.get(hash);
-      return Boolean(
-        logBlockHash &&
-          logBlockHash !== String(existing.blockHash).toLowerCase()
-      );
-    });
+    );
     const hashesToRefetch = new Set(
-      hashesToFetch.filter((hash) => vaultTxsByHash.has(hash))
+      observedHashesToFetch.filter((hash) => vaultTxsByHash.has(hash))
     );
 
     let fetchedTransactions: IEvmTransactionResponse[] = [];
@@ -555,14 +557,15 @@ export const fetchSmartAccountUserOpTransactions = async (
     const overlapStart = hasCursor
       ? fromBlock
       : Math.max(0, latestBlock - REORG_SAFETY_BLOCKS);
-    const missing = refreshedExisting.filter(
+    const placementsToCheck = refreshedExisting.filter(
       (tx) =>
         Number(tx.blockNumber) >= overlapStart &&
         Number(tx.blockNumber) <= coveredToBlock &&
-        !successByTxHash.has(tx.hash.toLowerCase())
+        (!successByTxHash.has(tx.hash.toLowerCase()) ||
+          hashesToRefetch.has(tx.hash.toLowerCase()))
     );
     const missingHeights = Array.from(
-      new Set(missing.map((tx) => Number(tx.blockNumber)))
+      new Set(placementsToCheck.map((tx) => Number(tx.blockNumber)))
     );
     const canonicalBlocks = await readHistoryDetails(
       provider,
@@ -575,7 +578,7 @@ export const fetchSmartAccountUserOpTransactions = async (
       missingHeights.map((height, index) => [height, canonicalBlocks[index]])
     );
     const orphaned = new Set<string>();
-    for (const tx of missing) {
+    for (const tx of placementsToCheck) {
       const header = canonicalByHeight.get(Number(tx.blockNumber));
       if (
         !header ||
@@ -588,6 +591,13 @@ export const fetchSmartAccountUserOpTransactions = async (
         orphaned.add(tx.hash.toLowerCase());
       }
     }
+    // Publish a disproved placement before a relocation lookup can stall.
+    // Keep this log in the next scan until its new placement is verified.
+    const hashesToFetch = observedHashesToFetch.filter(
+      (hash) => !orphaned.has(hash)
+    );
+    if (hashesToFetch.length !== observedHashesToFetch.length)
+      allDetailsFetched = false;
     if (hashesToFetch.length > 0) {
       const rawTransactions = (await readHistoryDetails(
         provider,

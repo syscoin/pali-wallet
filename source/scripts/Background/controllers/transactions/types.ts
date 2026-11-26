@@ -167,7 +167,8 @@ export interface IEvmTransactionsController {
     isPolling?: boolean,
     isRapidPolling?: boolean,
     isCurrentRead?: () => boolean,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    visiblePlacements?: boolean
   ) => Promise<IEvmTransactionResponse[]>;
   testExplorerApi: (
     apiUrl: string
@@ -277,7 +278,8 @@ export interface ITransactionsManagerUtils {
     requestScope?: string,
     isCurrentRead?: () => boolean,
     bypassCompletedCache?: boolean,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    visiblePlacements?: boolean
   ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {

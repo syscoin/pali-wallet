@@ -71,7 +71,8 @@ const TransactionsManager = (): ITransactionsManager => {
     requestScope?: string,
     isCurrentRead?: () => boolean,
     bypassCompletedCache = false,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    visiblePlacements = false
   ) => {
     // Clear expired cache entries
     clearExpiredCache();
@@ -138,7 +139,7 @@ const TransactionsManager = (): ITransactionsManager => {
     // Once a fresh read starts, older completed data must not overtake it.
     transactionCache.delete(cacheKey);
     const cacheOwner = {
-      full: !isRapidPolling || Boolean(forceRefresh),
+      full: !visiblePlacements && (!isRapidPolling || Boolean(forceRefresh)),
       scope: requestScope,
       startedAt: Date.now(),
     } as ITransactionRead;
@@ -162,12 +163,14 @@ const TransactionsManager = (): ITransactionsManager => {
             isPolling,
             isRapidPolling && !forceRefresh,
             isCurrentRead,
-            signal
+            signal,
+            visiblePlacements
           );
         }
         // Cache the result only if no pending transactions
         // This prevents caching stale confirmation data
         if (
+          !visiblePlacements &&
           !hasUnconfirmedTxs &&
           !isEvmHistoryIncomplete(result) &&
           canPublish() &&

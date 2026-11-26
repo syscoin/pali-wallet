@@ -9,6 +9,8 @@ import {
   explorerApiError,
   belongsToEvmHistoryAccount,
   markEvmHistoryIncomplete,
+  markEvmHistoryOrphaned,
+  needsVisibleEvmPlacementCheck,
   markEvmExplorerHasMore,
   isEvmHistoryIncomplete,
 } from '../../../../shared/evmHistory';
@@ -23,6 +25,7 @@ import { fetchSmartAccountUserOpTransactions } from './smartAccountHistory';
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
   findUserTxsInProviderByBlocksRange,
+  getAnchoredHistoryBlocks,
   validateAndManageUserTransactions,
 } from './utils';
 
@@ -617,7 +620,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     isPolling?: boolean,
     isRapidPolling?: boolean,
     isCurrentRead?: () => boolean,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    visiblePlacements = false
   ) => {
     const check = () => {
       if (signal?.aborted || (isCurrentRead && !isCurrentRead()))
@@ -650,6 +654,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
 
     let rawTransactions: IEvmTransactionResponse[] = [];
+    let placementUpdates: IEvmTransactionResponse[] = [];
     const isSmartAccount = Boolean((currentAccount as any).isSmartAccount);
     let apiSucceeded = false;
     let explorerHasMore: boolean | undefined;
@@ -691,7 +696,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     // address can never match — EntryPoint logs below cover them instead.
     if (
       rawTransactions.length === 0 &&
-      !rpcForbiddenList.includes(currentNetworkChainId) &&
+      (!activeNetwork?.apiUrl ||
+        !rpcForbiddenList.includes(currentNetworkChainId)) &&
       !(isSmartAccount && apiSucceeded)
     ) {
       // Smart block scanning based on account history
@@ -709,7 +715,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       const blocksToScan = hasTransactionHistory ? 30 : hasBalance ? 20 : 10;
       rawTransactions = [];
       // Skip expensive block scanning during rapid polling
-      if (isPolling && !isRapidPolling) {
+      if (
+        isPolling &&
+        !isRapidPolling &&
+        !rpcForbiddenList.includes(currentNetworkChainId)
+      ) {
         rawTransactions = await getUserTransactionByDefaultProvider(
           blocksToScan,
           web3Provider,
@@ -730,8 +740,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         currentAccountTxs?.ethereum?.[currentNetworkChainId]
       ) {
         const existingTxs = currentAccountTxs.ethereum[currentNetworkChainId];
-        const pendingTxs = existingTxs.filter(
-          (tx: any) => !tx.blockNumber || !tx.blockHash
+        const pendingTxs = existingTxs.filter((tx: any) =>
+          visiblePlacements
+            ? needsVisibleEvmPlacementCheck(tx)
+            : !tx.blockNumber || !tx.blockHash
         );
 
         if (pendingTxs.length > 0) {
@@ -755,11 +767,48 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             return cached;
           };
 
+          if (visiblePlacements) {
+            const heights = new Set<number>(
+              pendingTxs
+                .filter((tx: any) => tx.blockHash && Number(tx.blockNumber) > 0)
+                .map((tx: any) => Number(tx.blockNumber))
+            );
+            const blocks = await getAnchoredHistoryBlocks(
+              web3Provider,
+              heights,
+              getBlockOnce,
+              check
+            );
+            if (blocks)
+              for (const height of heights) {
+                const block = blocks.get(height);
+                if (block) blockFetchCache.set(height, Promise.resolve(block));
+              }
+          }
+
           // Per-tx status lookups still run, but in parallel and without the
           // redundant per-tx block/height calls.
           const pendingTxPromises = pendingTxs.map(async (pendingTx: any) => {
             try {
               check();
+              if (Number(pendingTx.blockNumber) > 0 && pendingTx.blockHash) {
+                const header = await getBlockOnce(
+                  Number(pendingTx.blockNumber)
+                );
+                check();
+                if (
+                  !header ||
+                  Number(header.number) !== Number(pendingTx.blockNumber) ||
+                  !/^0x[0-9a-f]{64}$/i.test(header.hash) ||
+                  !/^0x[0-9a-f]{64}$/i.test(pendingTx.blockHash) ||
+                  header.hash.toLowerCase() ===
+                    pendingTx.blockHash.toLowerCase()
+                )
+                  return null;
+                // Publish the disproved placement now. The next pending read
+                // can establish a new one independently of this header.
+                return markEvmHistoryOrphaned(pendingTx);
+              }
               const tx = await web3Provider.getTransaction(pendingTx.hash);
               check();
               if (
@@ -848,15 +897,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           });
 
           const updatedPendingTxs = await Promise.all(pendingTxPromises);
-          const validUpdatedTxs = updatedPendingTxs.filter((tx) => tx !== null);
-
-          // Merge the individually fetched pending transactions with the block scan results
-          if (validUpdatedTxs.length > 0) {
-            rawTransactions = [
-              ...rawTransactions,
-              ...(validUpdatedTxs as unknown as IEvmTransactionResponse[]),
-            ];
-          }
+          placementUpdates = updatedPendingTxs.filter(
+            (tx) => tx !== null
+          ) as unknown as IEvmTransactionResponse[];
         }
       }
     }
@@ -890,7 +933,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     // Process all transactions consistently, regardless of source (API or RPC)
     check();
     const processedTransactions = validateAndManageUserTransactions(
-      rawTransactions,
+      // Smart history also refreshes confirmations from stored rows. Apply
+      // checked placements last so those copies cannot revive an orphan.
+      [...rawTransactions, ...placementUpdates],
       incompleteHistory ? undefined : pendingHashes
     ) as IEvmTransactionResponse[];
     if (explorerHasMore !== undefined)

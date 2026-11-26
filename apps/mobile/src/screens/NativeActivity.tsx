@@ -82,6 +82,15 @@ const statusTag = (row: ActivityRow) => {
     if (observation?.kind === 'nonce-consumed') return 'nonceConsumed';
     return 'noTransactionRecorded';
   }
+  // Smart receipt validation covers the inner operation. Its current result also
+  // supersedes an indexed outer receipt or a previously inspected authorization.
+  if (row.orphanedPlacement && row.retainedObservation?.status !== 'missing') return 'unconfirmed';
+  if ((!row.unavailable || row.orphanedPlacement) && row.local?.smartAccount && row.retainedObservation) {
+    const retained = row.retainedObservation;
+    if (retained.status === 'mined') return retained.outcome;
+    if (row.replacementStatus === 'replaced') return 'replaced';
+    return BigInt(retained.latestNonce) > BigInt(row.local.nonce) ? 'nonceConsumed' : 'unconfirmed';
+  }
   const observation = currentObservation(row);
   const linked = row.smartAuthorizations?.length === 1 && row.smartAuthorizations[0]?.observation;
   if (linked && linked.kind === 'observed' && linked.transactionHash === row.hash &&
