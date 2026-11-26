@@ -83,7 +83,7 @@ const config = {
         },
         blog: false,
         sitemap: {
-          ignorePatterns: ['/search', '/*/search'],
+          ignorePatterns: ['/search', '/*/search', '/*/privacy'],
         },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),
