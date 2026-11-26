@@ -746,6 +746,7 @@ export class PaliInpageProviderEth extends BaseProvider {
       this._advanceChainState();
     }
     this._state.isBitcoinBased = isBitcoinBased;
+    if (isBitcoinBased) this._handleAccountsChanged([]);
   }
 
   private _handleAccountsChanged(
@@ -776,18 +777,10 @@ export class PaliInpageProviderEth extends BaseProvider {
       }
     }
 
-    // If we're on a Bitcoin-based network, ignore account updates for the Ethereum provider
-    if (this._state.isBitcoinBased) {
-      this._state.accounts = [];
-      this.selectedAddress = null;
-      return;
-    }
-
-    // If any non-hex accounts are passed (e.g., UTXO addresses), ignore and do not emit
-    if (accounts.length > 0 && !isHexString(accounts[0])) {
-      this._state.accounts = [];
-      this.selectedAddress = null;
-      return;
+    // A UTXO account notification can arrive before its mode notification.
+    // An empty EVM list preserves account visibility without exposing UTXO data.
+    if (this._state.isBitcoinBased || !accounts.every(isHexString)) {
+      accounts = [];
     }
 
     // emit accountsChanged if anything about the accounts array has changed
@@ -892,7 +885,11 @@ export class PaliInpageProviderEth extends BaseProvider {
     if (chainChanged) {
       this.chainId = chainId || null;
     }
-    if (!this._state.isBitcoinBased) this._handleConnect(chainId);
+    if (this._state.isBitcoinBased) {
+      this._handleAccountsChanged([]);
+      return;
+    }
+    this._handleConnect(chainId);
     if (
       chainChanged &&
       this._state.initialized &&
