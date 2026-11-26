@@ -102,6 +102,7 @@ import {
   isGuardianRecoveryPolicyChangedError,
   isGuardianRecoveryNotReadyError,
   isNativeGasError,
+  isSmartAccountPendingReviewError,
   isSmartAccountPrefundError,
   isSmartAccountSignatureError,
 } from 'utils/smartAccountErrors';
@@ -348,6 +349,12 @@ const SmartAccountPolicy = () => {
     location.key,
     metadataAvailability.current.revision,
   ]);
+  const [registrationReview, setRegistrationReview] = useState<{
+    entry: string;
+    message:
+      | 'send.smartAccountPendingReview'
+      | 'send.smartAccountAuthorizationUnverified';
+  }>();
   const guardianObservationScope = JSON.stringify([
     metadataEntryKey,
     activeNetwork.url,
@@ -643,6 +650,8 @@ const SmartAccountPolicy = () => {
   );
   const isUndeployedSmartAccount =
     Boolean(account?.isSmartAccount && metadata) && !metadata?.isDeployed;
+  const registrationNeedsReview =
+    isUndeployedSmartAccount && registrationReview?.entry === metadataEntryKey;
   const isSLHDSASetupRunning = slhDsaSetupStatus?.status === 'running';
   const slhDsaOperationStartedAt = isSLHDSASetupRunning
     ? slhDsaSetupStatus?.startedAt
@@ -1637,6 +1646,7 @@ const SmartAccountPolicy = () => {
       return;
     }
     const isCurrentUi = createUiGuard();
+    setRegistrationReview(undefined);
     setLoading(true);
     try {
       const approval = await capturePolicyApproval();
@@ -1680,6 +1690,18 @@ const SmartAccountPolicy = () => {
       if (isCurrentUi()) alert.success(t('settings.smartAccountRegistered'));
     } catch (error: any) {
       if (!isCurrentUi()) return;
+      if (
+        isSmartAccountPendingReviewError(error) ||
+        error?.message === 'SMART_ACCOUNT_AUTHORIZATION_CORRUPT'
+      ) {
+        setRegistrationReview({
+          entry: metadataEntryKey,
+          message: isSmartAccountPendingReviewError(error)
+            ? 'send.smartAccountPendingReview'
+            : 'send.smartAccountAuthorizationUnverified',
+        });
+        return;
+      }
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         alert.error(
@@ -3801,13 +3823,20 @@ const SmartAccountPolicy = () => {
                     : t('settings.smartAccountCurrentApprovalMethod')}
                 </p>
                 <span className="shrink-0 rounded-full bg-brand-blue500 bg-opacity-20 px-2 py-1 text-[10px] font-semibold text-brand-blue100">
-                  {isUndeployedSmartAccount
+                  {registrationNeedsReview
+                    ? t('transactions.unconfirmed')
+                    : isUndeployedSmartAccount
                     ? t('settings.smartAccountInfrastructureNotReadyStatus')
                     : t('settings.smartAccountInfrastructureReadyStatus')}
                 </span>
               </div>
-              <p className="mt-2 text-xs leading-5 text-brand-graylight">
-                {isUndeployedSmartAccount
+              <p
+                role={registrationNeedsReview ? 'alert' : undefined}
+                className="mt-2 text-xs leading-5 text-brand-graylight"
+              >
+                {registrationNeedsReview
+                  ? t(registrationReview.message)
+                  : isUndeployedSmartAccount
                   ? t('settings.smartAccountUndeployedNotice')
                   : t('settings.smartAccountCurrentApprovalMethodHint')}
               </p>
@@ -3884,10 +3913,16 @@ const SmartAccountPolicy = () => {
                 type="button"
                 disabled={loading}
                 loading={loading}
-                onClick={registerSmartAccount}
+                onClick={
+                  registrationNeedsReview
+                    ? () => navigate('/home?tab=activity')
+                    : registerSmartAccount
+                }
                 fullWidth
               >
-                {t('settings.registerSmartAccount')}
+                {registrationNeedsReview
+                  ? t('buttons.activity')
+                  : t('settings.registerSmartAccount')}
               </Button>
             </div>
           )}
