@@ -97,8 +97,10 @@ import {
 } from '../../../shared/evmFeeApproval';
 import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
 import {
+  EVM_TRANSACTION_HISTORY_SOURCE,
   getEvmExplorerHasMore,
   isEvmHistoryIncomplete,
+  markEvmSmartOutcome,
   needsVisibleEvmPlacementCheck,
 } from '../../../shared/evmHistory';
 import {
@@ -160,6 +162,7 @@ import {
   LOCAL_PASSKEY_STORAGE_KEY,
 } from '../../../wallet/browserLocalPasskeyStorage';
 import { readRetainedEoaCall } from '../../../wallet/dappCallsBundles.ts';
+import { projectEvmActivityRow } from '../../../wallet/evmActivityRow';
 import {
   createEvmSignedRecordLifecycle,
   EVM_SIGNED_RECORD_LIMITS,
@@ -2215,6 +2218,127 @@ class MainController {
     );
     assertCurrent();
     return record ? projectSavedEvmTransaction(record) : null;
+  }
+
+  /** Reconcile a visible Smart Account outer transaction from its signed record. */
+  public async observeSavedSmartAccountActivity(
+    hash: string,
+    expectedScope: IWalletNavigationScope
+  ): Promise<void> {
+    if (typeof hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(hash)) return;
+    const {
+      account,
+      address,
+      chainId,
+      isSmart,
+      records,
+      session,
+      assertCurrent,
+    } = this.captureSavedEvmActivity(expectedScope);
+    if (!isSmart) return;
+    const record = await records.readSmartAccountReplayExact(
+      session,
+      chainId,
+      address,
+      hash.toLowerCase()
+    );
+    assertCurrent();
+    const clearedAt = account.evmActivityClearedAtByChainId?.[Number(chainId)];
+    if (
+      !record ||
+      record.cancellation ||
+      decodeSmartAccountCancellation(record.entry) ||
+      !['signed', 'attempted', 'submitted'].includes(record.entry.phase) ||
+      (clearedAt !== undefined && record.entry.createdAt <= clearedAt)
+    )
+      return;
+    const operations = record.operations.filter(
+      (operation) => operation.account.toLowerCase() === address.toLowerCase()
+    );
+    if (!operations.length) return;
+    const owner = { ...store.getState().vault.activeAccount };
+    const read = this.captureFreshEvmRead(expectedScope);
+    let timestamp = Math.floor(record.entry.createdAt / 1000);
+    const observation = await read.run((provider) =>
+      withEvmReadPhase(provider, assertCurrent, (phase) =>
+        observeSmartAccountOperations(
+          {
+            account: address,
+            chainId,
+            hash: record.entry.hash,
+            payer: record.entry.from,
+            nonce: record.entry.nonce,
+            operations,
+          },
+          async (method, params) => {
+            const result = await phase.send(method, [...params]);
+            if (
+              method === 'eth_getBlockByNumber' &&
+              typeof result?.timestamp === 'string' &&
+              /^0x[0-9a-f]+$/i.test(result.timestamp) &&
+              Number.isSafeInteger(Number(result.timestamp))
+            )
+              timestamp = Number(result.timestamp);
+            return result;
+          },
+          assertCurrent
+        )
+      )
+    );
+    assertCurrent();
+    if (observation.status !== 'mined') return;
+    const { accountTransactions } = store.getState().vault;
+    const existing = accountTransactions[owner.type]?.[owner.id]?.ethereum?.[
+      Number(chainId)
+    ]?.some(
+      (transaction) =>
+        typeof transaction.hash === 'string' &&
+        transaction.hash.toLowerCase() === record.entry.hash
+    );
+    if (existing) return;
+    const saved = projectSmartAccountSavedTransaction(record, address);
+    const summary = projectEvmActivityRow(saved);
+    const success = observation.outcome === 'confirmed';
+    const transaction = markEvmSmartOutcome(
+      {
+        hash: saved.hash,
+        historySource: EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned,
+        chainId: Number(chainId),
+        nonce: saved.nonce,
+        from: summary.from,
+        to: summary.to,
+        feePayer: saved.from,
+        value: summary.value,
+        gas: saved.gasLimit,
+        gasPrice: saved.feePerGas,
+        type: saved.type,
+        timestamp,
+        methodSelector: summary.methodSelector,
+        isSpeedUp: saved.operation === 'speed-up',
+        ...(saved.originalHash ? { replacesHash: saved.originalHash } : {}),
+        blockHash: observation.block.hash,
+        blockNumber: Number(observation.block.number),
+        confirmations: 1,
+        smartAccountExecution: true,
+        smartAccountExecutionFrom: address,
+        status: success ? 'success' : 'failed',
+        success,
+        isError: success ? '0' : '1',
+        // eslint-disable-next-line camelcase
+        txreceipt_status: success ? '1' : '0',
+      } as unknown as IEvmTransactionResponse,
+      success,
+      address
+    );
+    store.dispatch(
+      setSingleTransactionToState({
+        accountId: owner.id,
+        accountType: owner.type,
+        chainId: Number(chainId),
+        networkType: TransactionsType.Ethereum,
+        transaction,
+      })
+    );
   }
 
   public async canCancelSavedSmartAccountTransaction(

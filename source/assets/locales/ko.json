@@ -602,6 +602,7 @@
     "unableToCalculateFees": "수수료를 계산할 수 없습니다. 클릭하여 다시 시도하세요.",
     "calculating": "계산 중...",
     "unableToLoad": "로드할 수 없음",
+    "smartAccountAuthorizationUnverified": "Pali에서 스마트 계정의 승인을 확인할 수 없습니다. 다시 시도하기 전에 활동을 확인하세요.",
     "smartAccountPendingReview": "저장된 스마트 계정 거래가 아직 해결되지 않았습니다. 다른 거래를 보내기 전에 활동을 열어 확인하세요.",
     "smartAccountPayerPending": "이 작업을 계속하려면 수수료 지불 계정의 이전 거래가 확인되어야 합니다. 확인을 기다린 후 다시 시도하세요.",
     "requestedNativeValue": "요청된 네이티브 통화 금액",

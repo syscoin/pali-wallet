@@ -602,6 +602,7 @@
     "unableToCalculateFees": "Gebühren können nicht berechnet werden. Klicken Sie zum Wiederholen.",
     "calculating": "Berechnung läuft...",
     "unableToLoad": "Kann nicht geladen werden",
+    "smartAccountAuthorizationUnverified": "Pali konnte die Autorisierung des Smart Accounts nicht überprüfen. Prüfe die Aktivität, bevor du es erneut versuchst.",
     "smartAccountPendingReview": "Eine gespeicherte Smart-Account-Transaktion ist noch ungeklärt. Öffne Aktivität, um sie zu prüfen, bevor du eine weitere Transaktion sendest.",
     "smartAccountPayerPending": "Eine frühere Transaktion des Gebührenzahlers muss bestätigt werden, bevor diese Aktion fortgesetzt werden kann. Warte auf die Bestätigung und versuche es erneut.",
     "requestedNativeValue": "Angeforderter Betrag in nativer Währung",

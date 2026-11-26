@@ -752,6 +752,39 @@ async function settleReplay(
   return receipt;
 }
 
+it('adds an exact mined retained outer only after every selected Smart operation is verified', async () => {
+  const f = await fixture(0, 2);
+  const scope = { account: '1', network: mockState.vault.activeNetwork.url };
+  const observe = () =>
+    f.wallet.observeSavedSmartAccountActivity(f.hash, scope);
+  await expect(observe()).resolves.toBeUndefined(); // Signed, no mined receipt.
+  const activity = () =>
+    mockState.vault.accountTransactions.SmartAccount[1]?.ethereum?.[1];
+  expect(activity()).toBeUndefined();
+  await settleReplay(f, 'confirmed', 'missing');
+  await expect(observe()).rejects.toThrow('Smart account outcome unavailable');
+  expect(activity()).toBeUndefined();
+  await settleReplay(f, 'confirmed', 'reverted');
+  await expect(observe()).resolves.toBeUndefined();
+  expect(activity()).toEqual([
+    expect.objectContaining({
+      hash: f.hash,
+      blockHash,
+      blockNumber: 12,
+      status: 'failed',
+      smartAccountExecutionFrom: smart,
+      smartAccountOutcome: {
+        blockHash,
+        blockNumber: 12,
+        smartAccount: smart,
+        success: false,
+      },
+    }),
+  ]);
+  expect(mockState.vault.accountTransactions.HDAccount).toEqual({});
+  expect(f.broadcasts).toEqual([]);
+});
+
 async function saveNativeRecipientCopies(
   f: Awaited<ReturnType<typeof fixture>>,
   recipientType: 'SmartAccount' | 'HDAccount',

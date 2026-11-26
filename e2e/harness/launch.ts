@@ -22,7 +22,8 @@ export type LaunchOptions = {
   // Cold-restart fixtures may reopen only a direct child of this run's profiles.
   resumeProfileDir?: string;
   videoSize?: { height: number; width: number };
-  viewport?: { height: number; width: number };
+  // null lets actual browser window dimensions control the viewport.
+  viewport?: { height: number; width: number } | null;
 };
 
 // Launches a fresh Chromium profile with the built extension loaded. Each run
@@ -99,9 +100,12 @@ export const launchExtension = async (
   if (E2E_CONFIG.headless) {
     // MV3 extensions require the new headless mode.
     args.unshift('--headless=new');
+    if (options.viewport === null) args.push('--screen-info={1600x1000}');
   }
 
-  const viewport = options.viewport ?? { height: 800, width: 600 };
+  const defaultViewport = { height: 800, width: 600 };
+  const viewport =
+    options.viewport === undefined ? defaultViewport : options.viewport;
   const context = await chromium.launchPersistentContext(profileDir, {
     chromiumSandbox: true,
     args,
@@ -120,7 +124,7 @@ export const launchExtension = async (
       : {
           recordVideo: {
             dir: path.join(E2E_CONFIG.artifactsDir, 'videos'),
-            size: options.videoSize ?? viewport,
+            size: options.videoSize ?? viewport ?? defaultViewport,
           },
         }),
     viewport,

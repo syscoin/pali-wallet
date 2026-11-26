@@ -602,6 +602,7 @@
     "unableToCalculateFees": "Unable to calculate fees. Click to retry.",
     "calculating": "Calculating...",
     "unableToLoad": "Unable to load",
+    "smartAccountAuthorizationUnverified": "Pali could not verify the Smart Account authorization. Check Activity before trying again.",
     "smartAccountPendingReview": "A saved Smart Account transaction is unresolved. Open Activity to review it before sending another transaction.",
     "smartAccountPayerPending": "An earlier fee-payer transaction must confirm before this action can continue. Wait for confirmation, then try again.",
     "requestedNativeValue": "Requested native value",

@@ -602,6 +602,7 @@
     "unableToCalculateFees": "无法计算费用。点击重试。",
     "calculating": "计算中...",
     "unableToLoad": "无法加载",
+    "smartAccountAuthorizationUnverified": "Pali 无法验证智能账户的授权。请先查看活动记录，再重试。",
     "smartAccountPendingReview": "已保存的智能账户交易尚未解决。请先打开“活动”查看该交易，再发送其他交易。",
     "smartAccountPayerPending": "费用支付账户的上一笔交易必须先确认，才能继续此操作。请等待确认后重试。",
     "requestedNativeValue": "请求的原生币金额",

@@ -602,6 +602,7 @@
     "unableToCalculateFees": "Impossible de calculer les frais. Cliquez pour réessayer.",
     "calculating": "Calcul en cours...",
     "unableToLoad": "Impossible de charger",
+    "smartAccountAuthorizationUnverified": "Pali n’a pas pu vérifier l’autorisation du compte intelligent. Consultez l’activité avant de réessayer.",
     "smartAccountPendingReview": "Une transaction enregistrée du compte intelligent reste non résolue. Ouvrez Activité pour la consulter avant d’envoyer une autre transaction.",
     "smartAccountPayerPending": "Une transaction précédente du payeur des frais doit être confirmée avant de continuer. Attendez la confirmation, puis réessayez.",
     "requestedNativeValue": "Valeur native demandée",
