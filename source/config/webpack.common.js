@@ -597,9 +597,9 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
-        // Home uses the labels without loading the full transaction review UI.
+        // Share labels and exact amount formatting across Activity, Details and fee reviews.
         transactionDisplay: {
-          test: /[\\/]source[\\/]utils[\\/]transactionDisplay\.ts$/,
+          test: /[\\/]source[\\/]utils[\\/](?:transactionDisplay|formatSyscoinValue|bigNumberString|syscoinAssetAmount)\.ts$/,
           chunks: 'async',
           name: 'transaction-display',
           minChunks: 2,
