@@ -861,6 +861,20 @@ it.each([
   }
 );
 
+it.each(['speed-up', 'cancel'] as const)(
+  'shows Confirmed for a mined %s replacement',
+  (kind) => {
+    render(
+      <UtxoTransactionsListComponent
+        replacement={{ kind, originalTxid: 'e'.repeat(64) }}
+        tx={{ ...pendingNativeRow, confirmations: 2, blockHeight: 9 }}
+      />
+    );
+    expect(screen.getByText('send.confirmed')).toBeTruthy();
+    expect(screen.queryByText('send.sent')).toBeNull();
+  }
+);
+
 it('does not trust replacement labels or menu eligibility from an indexer row', async () => {
   const user = userEvent.setup();
   mockEmitter.mockResolvedValue({ cancel: false, speedUp: false });

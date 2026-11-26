@@ -317,7 +317,9 @@ const UtxoTransactionsListComponentBase = ({
             </Tooltip>
           ) : isConfirmed ? (
             <p className="text-xs font-normal text-brand-green">
-              {tokenOperation
+              {replacement
+                ? t('send.confirmed')
+                : tokenOperation
                 ? intent?.direction
                   ? t(
                       intent.direction === 'sent'
