@@ -58,6 +58,28 @@ describe('wallet authentication session boundaries', () => {
 
   afterEach(() => errorSpy.mockRestore());
 
+  it('rejects invalid phrase lengths before the keyring can default to 12 words', () => {
+    for (const invalid of [256, 13, 0, NaN, null, '24']) {
+      expect(() => wallet.createNewSeed(invalid)).toThrow(RangeError);
+    }
+    expect(wallet.getActiveKeyring).not.toHaveBeenCalled();
+    keyring.createNewSeed = jest.fn((count) =>
+      Array(count).fill('word').join(' ')
+    );
+    wallet.createNewSeed();
+    for (const count of [12, 15, 18, 21, 24]) wallet.createNewSeed(count);
+    expect(keyring.createNewSeed.mock.calls).toEqual([
+      [12],
+      [12],
+      [15],
+      [18],
+      [21],
+      [24],
+    ]);
+    keyring.createNewSeed.mockReturnValue(Array(12).fill('word').join(' '));
+    expect(() => wallet.createNewSeed(24)).toThrow('requested word count');
+  });
+
   it('clears an older popup draft only when opening a locked keyring', async () => {
     keyring.isUnlocked.mockReturnValue(false);
     keyring.unlock.mockImplementation(async () => {

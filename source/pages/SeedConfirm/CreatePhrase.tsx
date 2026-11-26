@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
+import { GENERATED_PHRASE_WORD_COUNTS } from '../../shared/recoveryPhrase';
 import { Button, SeedPhraseDisplay } from 'components/index';
 import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -108,8 +109,11 @@ export const CreatePhrase = () => {
             value={wordCount}
             onChange={(e) => setWordCount(parseInt(e.target.value))}
           >
-            <option value={12}>12</option>
-            <option value={24}>24</option>
+            {GENERATED_PHRASE_WORD_COUNTS.map((count) => (
+              <option key={count} value={count}>
+                {count}
+              </option>
+            ))}
           </select>
           <Button
             type="button"

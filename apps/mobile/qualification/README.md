@@ -159,7 +159,7 @@ The source-map preservation CLI checks every embedded project source against
 the exact build checkout and retains the prior c960 project modules, the three
 POST modules and the shared wallet modules listed in `post-evidence.cjs`. Native artifact
 review must retain that complete binding, independently hash the lockfile and
-ZIP/map bytes, verify all five launch pairs, and preserve all Android custody
+ZIP/map bytes, verify all seven hosted launch pairs (six Android, one iOS), and preserve all Android custody
 and restart checks. On iOS the original storage-refusal report stays failed,
 with `custodyQualified: false` and `sdkSmokeVerified: false`, even when both
 transport gates pass. No native pass is claimed by the Node controls alone.
@@ -167,8 +167,10 @@ transport gates pass. No native pass is claimed by the Node controls alone.
 The qualification entry defers all wallet/ethers/BIP39 imports until the native
 crypto gate has completed. During fresh generation, a bounded in-memory observer
 delegates RNG requests to the qualified native provider and verifies that the
-actual SDK-generated mnemonic decodes to one of its 128-bit entropy outputs.
-Only the verification boolean is reported; observed entropy buffers are cleared.
+actual SDK-generated mnemonic decodes to a native output of the requested size.
+The Android runner checks both 16 bytes for 12 words and 32 bytes for 24 words.
+The reports include the verification result and Android's verified word count.
+The observer clears its entropy buffers.
 This also detects a dependency that captured an earlier global RNG at import.
 
 The default full qualification mode runs both public-mnemonic import and fresh random generation. Each scenario
@@ -177,6 +179,9 @@ wallet-bound backup receipt, tests lock/wrong-password/correct-password, then
 leaves the database open. The runner terminates that OS process and relaunches
 the same installed app/data. A changed native session ID, matching public address
 and matching encrypted-vault fingerprint establish the tested cold restart.
+Android repeats generation and cold restart with 24 words in a fresh installation.
+The default 12-word run writes `android-generate-{create,restart}.json`, and the
+24-word run writes `android-generate-24-{create,restart}.json`.
 
 After the first account's offline signature, full qualification creates HD index
 1 through the real SDK, verifies active/first-account removal refusal, selects

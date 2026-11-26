@@ -390,19 +390,20 @@ export function Button({
 }
 
 /** A mutually exclusive view filter, kept together even on narrow screens. */
-export function SegmentedControl<T extends string>({
-  label, value, options, onChange,
+export function SegmentedControl<T extends string | number>({
+  label, value, options, onChange, disabled = false,
 }: {
   label: string;
   value: T;
   options: readonly { value: T; label: string; displayLabel?: string }[];
   onChange(value: T): void;
+  disabled?: boolean;
 }) {
   return <View accessibilityRole="tablist" accessibilityLabel={label} style={styles.segments}>
     {options.map((option) => <IdlePressable key={option.value} accessibilityRole="tab"
-      accessibilityLabel={option.label} accessibilityState={{ selected: value === option.value }}
+      accessibilityLabel={option.label} accessibilityState={{ selected: value === option.value, disabled }} disabled={disabled}
       aria-selected={value === option.value} onPress={() => onChange(option.value)}
-      style={({ pressed }) => [styles.segment, value === option.value && styles.segmentSelected, pressed && { opacity: 0.75 }]}>
+      style={({ pressed }) => [styles.segment, value === option.value && styles.segmentSelected, (pressed || disabled) && { opacity: disabled ? 0.42 : 0.75 }]}>
       <Text style={[styles.segmentLabel, value === option.value && { color: colors.bg }]}>{option.displayLabel ?? option.label}</Text>
     </IdlePressable>)}
   </View>;

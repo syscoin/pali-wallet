@@ -119,6 +119,8 @@ const needsInitialBackup = new URLSearchParams(window.location.search).has('back
 const publicSendFixture = new URLSearchParams(window.location.search).has('public-send-fixture');
 let backupConfirmed = visualWalletPresent && !needsInitialBackup;
 const publicBackupWords = Object.freeze([...Array<string>(11).fill('abandon'), 'about']);
+const publicLongBackupWords = Object.freeze([...Array<string>(23).fill('abandon'), 'art']);
+let savedBackupWords = publicBackupWords;
 const fingerprint = '1'.repeat(64);
 export const visualReviewFixture = Object.freeze({
   enabled: visualReviewEnabled,
@@ -201,10 +203,11 @@ export function createNativeWalletControllers() {
     cancel: fixtureDeviceAuthorization.cancel,
     isAnyPromptActive: () => fixtureDeviceAuthorization.isAnyPromptActive(),
   };
-  const createVisualWallet = async () => {
+  const createVisualWallet = async (words: readonly string[] = publicBackupWords) => {
     if (!visualReviewEnabled || visualWalletPresent) throw Error('Fixture cannot create real wallets');
     const owner = new AbortController();
     await fixtureDeviceAuthorization.request('account-change', owner.signal, () => {});
+    savedBackupWords = words;
     visualWalletPresent = true; backupConfirmed = false; sessionUnlocked = true;
     visualTokenValues.clear();
     catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1,
@@ -368,7 +371,9 @@ export function createNativeWalletControllers() {
       },
     },
     session: {
-      async createWallet() { await createVisualWallet(); },
+      async createWallet(wordCount) {
+        await createVisualWallet(wordCount === 24 ? publicLongBackupWords : publicBackupWords);
+      },
       async importWallet(phrase) {
         if (!visualReviewEnabled || phrase.trim().toLowerCase().split(/\s+/).join(' ') !== publicBackupWords.join(' ')) throw Error('Fixture cannot import real wallets');
         await createVisualWallet();
@@ -522,7 +527,7 @@ export function createNativeWalletControllers() {
     async readPhrase(credential) {
       if (!sessionUnlocked) throw Error('Closed fixture session');
       await authenticateOperation(credential, () => { if (!sessionUnlocked) throw refused('CANCELLED'); });
-      return publicBackupWords;
+      return savedBackupWords;
     },
     async fingerprint() {
       if (!sessionUnlocked) throw Error('Locked fixture session');
@@ -635,7 +640,7 @@ export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof c
       pending = (async () => {
         guard(); await controllers.authority.dispose(); await recoveryGate('prepare'); guard();
         if (cancelled) throw Error('CANCELLED');
-        if (phrase !== publicBackupWords.join(' ')) throw Error('WRONG_PHRASE');
+        if (phrase !== savedBackupWords.join(' ')) throw Error('WRONG_PHRASE');
         assertPrepared = guard; return proof;
       })(); return pending;
     },

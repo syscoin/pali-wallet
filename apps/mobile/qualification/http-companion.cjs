@@ -138,7 +138,7 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork,
       failedCase = 'unavailable';
       return `&httpPort=${port}&httpToken=${token}`;
     },
-    async verify(read, sessionId) {
+    async verify(read, sessionId, mnemonicWordCount) {
       if (!active) throw Error('HTTP_FIXTURE_PHASE_REQUIRED');
       const text = read(`pali-native-http-${active.token}.json`);
       if (typeof text !== 'string' || Buffer.byteLength(text) > 8192) throw Error('HTTP_QUALIFICATION_REPORT_INVALID');
@@ -167,7 +167,9 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork,
       finalPostAudit = snapshot.post;
       assertAudit(audit, active.token, port);
       assertPostAudit(finalPostAudit, active.token, port);
-      records.push({ nativeHttpQualified: true, report, audit, ...(walletConnect ? { walletConnect } : {}),
+      records.push({ nativeHttpQualified: true, report, audit,
+        ...(mnemonicWordCount !== undefined ? { mnemonicWordCount } : {}),
+        ...(walletConnect ? { walletConnect } : {}),
         post: { nativePostQualified: true, report: postReport, audit: finalPostAudit } });
       active = undefined;
       return records.at(-1);
@@ -215,13 +217,16 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork,
           serverStatus: post ? 'available' : unavailable, server: post },
       };
     },
-    assertComplete(expected) {
-      const phases = expected === 1 ? ['import:create'] : expected === 4
-        ? ['generate:create', 'generate:restart', 'import:create', 'import:restart'] : [];
-      if (!phases.length || active || records.length !== expected || records.some(record => record.nativeHttpQualified !== true || record.post?.nativePostQualified !== true) ||
-          new Set(records.map(({ report }) => report.token)).size !== expected ||
-          records.map(({ report }) => `${report.scenario}:${report.phase}`).sort().join(',') !== phases.join(','))
+    assertComplete(expectedPhases) {
+      const remaining = new Set(expectedPhases);
+      if (!remaining.size || remaining.size !== expectedPhases.length || active ||
+          records.length !== remaining.size || new Set(records.map(({ report }) => report.token)).size !== remaining.size)
         throw Error('HTTP_QUALIFICATION_INCOMPLETE');
+      for (const { report, post, nativeHttpQualified, mnemonicWordCount } of records) {
+        const phase = [report.scenario, report.phase, mnemonicWordCount].filter(Boolean).join(':');
+        if (nativeHttpQualified !== true || post?.nativePostQualified !== true || !remaining.delete(phase))
+          throw Error('HTTP_QUALIFICATION_INCOMPLETE');
+      }
     },
     close,
   };
