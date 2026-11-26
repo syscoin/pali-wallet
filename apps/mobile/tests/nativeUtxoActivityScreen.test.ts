@@ -243,3 +243,20 @@ for (const kind of ['sent', 'self', 'received'] as const)
       assert.equal(detail.props.rows.find((entry: { label: string }) => entry.label === 'Network Fee').value, '0.001 SYS');
     } finally { f.close(); }
   });
+
+test('indexed UTXO replacement titles distinguish a Speed Up and Cancellation from a plain self-transfer', () => {
+  const self = { txid: '5'.repeat(64), block: null, observedConfirmations: 0, receivedUnits: '9000', spentUnits: '10000',
+    netUnits: '-1000', transactionFeeUnits: '1000', hasAssetData: false, zdag: false, assetAmount: null,
+    nativeTransfer: { kind: 'self' as const, amount: '9000' } };
+  for (const [kind, title] of [[undefined, 'Self transfer'], ['speed-up', 'Speed Up'], ['cancel', 'Cancellation']] as const) {
+    const f = fixture({ ...self, ...(kind ? { replacementKind: kind } : {}) });
+    try {
+      const row = f.row();
+      assert.equal(row.props.title, title);
+      if (kind) assert.match(row.props.label, new RegExp(`^${title}\\.`));
+      row.props.onPress();
+      const detail = f.render().find(item => item.type === 'TransactionDetailLayout');
+      assert.equal(detail?.props.direction, title);
+    } finally { f.close(); }
+  }
+});

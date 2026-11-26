@@ -49,6 +49,7 @@ import {
   translateTransactionType,
 } from 'utils/transactionDisplay';
 import { isTransactionInBlock } from 'utils/transactionUtils';
+import type { UtxoAcknowledgedReplacement } from 'utils/utxoAcknowledgedInputs';
 
 import { UtxoReplacementActions } from './UtxoReplacementActions';
 import {
@@ -71,9 +72,11 @@ const mergeHistoryRows = (...lists: ITransactionInfoUtxo[][]) => {
 
 const UtxoTransactionsListComponentBase = ({
   locallyAcknowledged = false,
+  replacement,
   tx,
 }: {
   locallyAcknowledged?: boolean;
+  replacement?: UtxoAcknowledgedReplacement;
   tx: ITransactionInfoUtxo;
 }) => {
   const { navigate, useCopyClipboard, alert } = useUtils();
@@ -254,6 +257,15 @@ const UtxoTransactionsListComponentBase = ({
   return (
     <div className="flex py-2 w-full border-b border-dashed border-bkg-deepBlue hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg">
       <div className="flex flex-1 flex-col gap-1">
+        {replacement && (
+          <p className="text-xs font-medium">
+            {t(
+              replacement.kind === 'cancel'
+                ? 'transactions.cancellation'
+                : 'header.speedUp'
+            )}
+          </p>
+        )}
         <div className="flex items-center gap-1">
           <p className="text-xs font-mono">{ellipsis(tx.txid, 4, 14)}</p>
           <Tooltip content={t('buttons.copy')}>
@@ -338,6 +350,15 @@ const UtxoTransactionsListComponentBase = ({
             </Tooltip>
           )}
         </div>
+        {replacement && (
+          <p
+            className="text-[10px] text-brand-gray300"
+            title={replacement.originalTxid}
+          >
+            {t('transactions.replaces')}:{' '}
+            {ellipsis(replacement.originalTxid, 4, 14)}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-[0.8] flex-col gap-1">
@@ -472,15 +493,30 @@ export const UtxoTransactionsList = ({
   const scopedTransactions = currentAccountTransactions?.syscoin?.[chainId];
   // Only Redux's local ACK can supply custody provenance for a compact row.
   // Paged Blockbook responses can contain arbitrary fields.
-  const locallyAcknowledged = useMemo(
-    () =>
-      new Set(
-        scopedTransactions
-          ?.filter((transaction) => transaction.localAcknowledgedInputs)
-          .map((transaction) => transaction.txid.toLowerCase())
-      ),
-    [scopedTransactions]
-  );
+  const locallyAcknowledged = useMemo(() => {
+    const acknowledgements = new Map<
+      string,
+      UtxoAcknowledgedReplacement | undefined
+    >();
+    for (const transaction of scopedTransactions ?? []) {
+      const ack = transaction.localAcknowledgedInputs;
+      if (
+        !ack ||
+        ack.accountXpub !== currentAccount?.xpub ||
+        ack.networkUrl !== networkUrl
+      )
+        continue;
+      const txid = transaction.txid.toLowerCase();
+      const replacement = ack.replacement;
+      const validReplacement =
+        (replacement?.kind === 'speed-up' || replacement?.kind === 'cancel') &&
+        typeof replacement.originalTxid === 'string' &&
+        /^[0-9a-f]{64}$/.test(replacement.originalTxid) &&
+        replacement.originalTxid !== txid;
+      acknowledgements.set(txid, validReplacement ? replacement : undefined);
+    }
+    return acknowledgements;
+  }, [scopedTransactions, currentAccount?.xpub, networkUrl]);
   const confirmationContext = getHomeBrowsingScope(
     { ...currentAccount, ...activeAccountRef },
     activeNetwork,
@@ -704,6 +740,7 @@ export const UtxoTransactionsList = ({
         <UtxoTransactionsListComponent
           key={tx.txid}
           locallyAcknowledged={locallyAcknowledged.has(tx.txid.toLowerCase())}
+          replacement={locallyAcknowledged.get(tx.txid.toLowerCase())}
           tx={tx}
         />
       ))}

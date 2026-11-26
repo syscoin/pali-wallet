@@ -1,5 +1,8 @@
 import { KeyringAccountType } from 'types/network';
-import { getRecentAcknowledgedInputOutpoints } from 'utils/utxoAcknowledgedInputs';
+import {
+  getRecentAcknowledgedInputOutpoints,
+  type UtxoAcknowledgedInputs,
+} from 'utils/utxoAcknowledgedInputs';
 
 import reducer, {
   setAccountTransactions,
@@ -36,7 +39,7 @@ const initial = () => reducer(undefined, { type: 'test/init' });
 const insert = (
   state: ReturnType<typeof reducer>,
   incoming: any,
-  localAcknowledgedInputs?: typeof acknowledged
+  localAcknowledgedInputs?: UtxoAcknowledgedInputs
 ) =>
   reducer(
     state,
@@ -97,6 +100,42 @@ describe('compact local UTXO acknowledgement history', () => {
       })
     );
     expect(rows(refreshed)[0].localAcknowledgedInputs).toEqual(acknowledged);
+    expect(rows(refreshed)[1]).not.toHaveProperty('localAcknowledgedInputs');
+  });
+
+  it('retains only the local replacement reference through confirmed Blockbook hydration', () => {
+    const replacement = {
+      kind: 'speed-up',
+      originalTxid: '55'.repeat(32),
+    } as const;
+    const local = insert(initial(), transaction(), {
+      ...acknowledged,
+      replacement,
+    });
+    const forged = {
+      ...acknowledged,
+      replacement: { kind: 'cancel', originalTxid: '44'.repeat(32) },
+    };
+    const refreshed = reducer(
+      local,
+      setAccountTransactions({
+        accountId: 0,
+        accountType: KeyringAccountType.HDAccount,
+        chainId,
+        networkType: TransactionsType.Syscoin,
+        transactions: [
+          transaction({ confirmations: 1, localAcknowledgedInputs: forged }),
+          transaction({
+            txid: '33'.repeat(32),
+            localAcknowledgedInputs: forged,
+          }),
+        ],
+      })
+    );
+    expect(rows(refreshed)[0].confirmations).toBe(1);
+    expect(rows(refreshed)[0].localAcknowledgedInputs?.replacement).toEqual(
+      replacement
+    );
     expect(rows(refreshed)[1]).not.toHaveProperty('localAcknowledgedInputs');
   });
 

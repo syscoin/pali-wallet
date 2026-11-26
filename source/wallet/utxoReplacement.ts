@@ -523,6 +523,7 @@ export async function prepareUtxoReplacement({
   assertPsbtWorkBudget(quote);
   check();
   return Object.freeze({
+    kind,
     psbt: quote,
     review,
     bindSigned(signed: PsbtData) {

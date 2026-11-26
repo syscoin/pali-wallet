@@ -16,6 +16,7 @@ import {
   type UtxoDiscoveryState,
   type UtxoIssuedAddress,
 } from './utxoAddressDiscovery.ts';
+import type { UtxoReplacementKind } from './utxoReplacement.ts';
 import { withoutSignatures } from './utxoSignedBinding.ts';
 import {
   capacity,
@@ -68,6 +69,7 @@ export type UtxoDurableSubmission = Readonly<{
   outpoints: readonly string[];
   owner: UtxoRecordOwner;
   rawTransaction: string;
+  replacementKind?: UtxoReplacementKind;
   replacementOf?: string;
   txid: string;
   url: string;
@@ -118,6 +120,7 @@ export function snapshotUtxoSubmission(
     feeSatoshis,
     virtualSize,
     issuedPaths,
+    replacementKind,
     replacementOf,
   } = record;
   return Object.freeze({
@@ -133,6 +136,7 @@ export function snapshotUtxoSubmission(
     }),
     operation,
     rawTransaction,
+    ...(replacementKind === undefined ? {} : { replacementKind }),
     ...(replacementOf === undefined ? {} : { replacementOf }),
     txid,
     url,
@@ -245,6 +249,9 @@ function checkRecord(
         typeof record.replacementOf !== 'string' ||
         !HASH.test(record.replacementOf) ||
         record.replacementOf === txid)) ||
+    (record.replacementKind !== undefined &&
+      (record.replacementOf === undefined ||
+        !['speed-up', 'cancel'].includes(record.replacementKind))) ||
     !validOutpoints(record.outpoints) ||
     !/^(0|[1-9][0-9]{0,19})$/.test(feeSatoshis) ||
     typeof raw !== 'string' ||
@@ -856,6 +863,7 @@ export class UtxoSignedRecords {
       issuedPaths,
       operation,
       owner,
+      replacementKind,
       replacementOf,
       signedDigest,
       unsignedTransaction,
@@ -868,6 +876,7 @@ export class UtxoSignedRecords {
       issuedPaths,
       operation,
       owner,
+      replacementKind,
       replacementOf,
       signedDigest,
       unsignedTransaction,
@@ -1014,6 +1023,33 @@ export class UtxoSignedRecords {
       inspectUtxoRbf(tx.ins)
       ? record
       : undefined;
+  }
+
+  /** Presentation for indexed transactions with an exact scoped submission. */
+  async activityReplacementKinds(
+    session: UtxoRecordSession,
+    owner: UtxoRecordOwner,
+    url: string,
+    txids: readonly string[]
+  ): Promise<ReadonlyMap<string, UtxoReplacementKind>> {
+    const kinds = new Map<string, UtxoReplacementKind>();
+    if (!txids.length) return kinds;
+    const wanted = new Set(txids);
+    const identity = ownerId(owner);
+    const { entries, version } = await this.readBundle(session);
+    if (version !== 2) return kinds;
+    for (const entry of entries) {
+      if (
+        entry.owner !== identity ||
+        entry.phase === 'pending' ||
+        !wanted.has(entry.txid)
+      )
+        continue;
+      const record = await this.readEntry(session, entry);
+      if (record.url === url && record.replacementKind)
+        kinds.set(entry.txid, record.replacementKind);
+    }
+    return kinds;
   }
 
   /** Resolve only the locally authenticated, same-input predecessor chain. */

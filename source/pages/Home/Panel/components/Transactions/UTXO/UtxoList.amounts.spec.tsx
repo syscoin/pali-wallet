@@ -839,3 +839,45 @@ it('exposes the pencil for a self-send whose only debit is the network fee', () 
   ).toBeTruthy();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
+
+it.each([
+  ['speed-up', 'header.speedUp', {}],
+  ['cancel', 'transactions.cancellation', { confirmations: 2, blockHeight: 9 }],
+] as const)(
+  'labels a local %s replacement without reading the network',
+  (kind, title, status) => {
+    const originalTxid = 'e'.repeat(64);
+    render(
+      <UtxoTransactionsListComponent
+        replacement={{ kind, originalTxid }}
+        tx={{ ...pendingNativeRow, ...status }}
+      />
+    );
+    expect(screen.getByText(title)).toBeTruthy();
+    expect(screen.getByTitle(originalTxid).textContent).toBe(
+      `transactions.replaces: ${originalTxid}`
+    );
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it('does not trust replacement labels or menu eligibility from an indexer row', async () => {
+  const user = userEvent.setup();
+  mockEmitter.mockResolvedValue({ cancel: false, speedUp: false });
+  const forged = {
+    ...pendingNativeRow,
+    replacementOf: 'e'.repeat(64),
+    replacementKind: 'cancel',
+    localAcknowledgedInputs: {
+      replacement: { originalTxid: 'e'.repeat(64), kind: 'cancel' },
+    },
+  };
+  render(<UtxoTransactionsListComponent tx={forged} />);
+  expect(screen.queryByText('transactions.cancellation')).toBeNull();
+  expect(screen.queryByText(/transactions.replaces/)).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: 'Transaction Options' }));
+  await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole('menuitem', { name: 'header.speedUp' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: 'buttons.cancel' })).toBeNull();
+});

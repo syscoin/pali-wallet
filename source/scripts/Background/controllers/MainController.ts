@@ -1855,6 +1855,7 @@ class MainController {
         owner: predecessor.owner,
         operation: 'wallet' as const,
         replacementOf: predecessor.txid,
+        replacementKind: binding.kind,
         rawTransaction: bound.rawTransaction,
         txid: bound.txid,
         url: bound.url,
@@ -1890,6 +1891,10 @@ class MainController {
           localAcknowledgedInputs: createUtxoAcknowledgedInputs(psbt.txInputs, {
             accountXpub: signing.context.account.xpub,
             networkUrl: signing.context.rpcUrl,
+            replacement: {
+              kind: record.replacementKind,
+              originalTxid: record.replacementOf,
+            },
           }),
         });
       } catch {

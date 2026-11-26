@@ -6,6 +6,7 @@ import { ISyscoinVIn, ISyscoinVOut } from '@sidhujag/sysweb3-utils';
 
 import { IAccountTransactions } from 'state/vault/types';
 import { BigNumber } from 'utils/ethersV6Compat';
+import type { UtxoAcknowledgedInputs } from 'utils/utxoAcknowledgedInputs';
 
 import type { EvmTransactionHistorySource } from '../../../../shared/evmHistory';
 import type { UtxoActivityParticipants } from '../../../../shared/utxoActivityParticipants';
@@ -179,12 +180,7 @@ export interface IEvmTransactionsController {
 
 //------------------------- SYS TYPES / INTERFACES -------------------------//
 
-export interface ILocalAcknowledgedInputs {
-  accountXpub: string;
-  acknowledgedAt: number;
-  networkUrl: string;
-  outpoints: string[];
-}
+export type ILocalAcknowledgedInputs = UtxoAcknowledgedInputs;
 
 export interface ISysTransaction {
   accountAssetTransfers?: any[];

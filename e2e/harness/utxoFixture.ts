@@ -115,6 +115,7 @@ export type UtxoFixture = ReturnType<typeof createUtxoFixture>;
 // Exact origin, account and transaction allowlists still apply to every read.
 export type UtxoFixtureReadState = {
   balance?: string;
+  estimateFee?: string;
   omitUnconfirmedBalance?: boolean;
   rawTransactions?: Record<string, unknown>;
   transactions?: unknown[];
@@ -342,7 +343,7 @@ export function fixtureRead(
       vout: [],
     };
   if (/^\/api\/v2\/estimatefee\/\d+$/.test(url.pathname))
-    return { result: '0.00001' };
+    return { result: state.estimateFee ?? '0.00001' };
   if (url.pathname === '/api/v2/tickers') return { ts: 1, rates: { usd: 1 } };
   return undefined;
 }

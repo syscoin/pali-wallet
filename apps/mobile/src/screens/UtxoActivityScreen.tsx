@@ -199,6 +199,8 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   const rowDirection = (row: UtxoActivityRow): 'sent' | 'received' | 'self' | 'unknown' => row.hasAssetData
     ? row.assetAmount?.direction ?? 'unknown'
     : row.nativeTransfer?.kind === 'self' ? 'self' : row.nativeTransfer?.direction ?? (row.netUnits?.startsWith('-') ? 'sent' : row.netUnits && row.netUnits !== '0' ? 'received' : row.netUnits === '0' ? 'self' : 'unknown');
+  const replacementTitle = (row: UtxoActivityRow) => row.replacementKind === 'cancel' ? t('transactions.cancellation')
+    : row.replacementKind === 'speed-up' ? t('header.speedUp') : undefined;
   const rows = state.rows.filter(row => filter === 'all' || rowDirection(row) === filter || rowDirection(row) === 'self' || rowDirection(row) === 'unknown');
   const dateOf = (row: UtxoActivityRow) => row.block ? activityDate(row.block.timestamp === null ? null : row.block.timestamp * 1000) : { key: 'pending', label: t('send.pending'), time: '' };
   return <SafeAreaView edges={chosen ? ['top', 'bottom'] : ['top']} style={s.root}>
@@ -230,13 +232,15 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
             const privateAmount = hideBalances && (item.hasAssetData ? assetQuantity(item) !== null : !!item.nativeTransfer || item.netUnits !== null);
             const first = index === 0 || dateOf(rows[index - 1]!).key !== date.key;
             const last = index === rows.length - 1 || dateOf(rows[index + 1]!).key !== date.key;
+            const replacement = replacementTitle(item);
+            const label = t('mobile.activityViews.nativeActivity.transactionLabel', { amount: privateAmount ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: status(item), date: date.label, time: date.time });
             return <ActivityListRow testID={`watch-activity-row-${item.txid}`}
               asset={utxoActivityAssetIcon(item, network.chainId)} assetSymbol={item.assetAmount?.symbol}
               first={first} last={last} heading={first ? date.label : undefined} direction={flow}
-              title={flow === 'sent' ? t('send.sent') : flow === 'received' ? t('send.received') : flow === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : item.hasAssetData ? t('mobile.activityViews.utxoActivityScreen.assetActivity') : t('buttons.activity')}
+              title={replacement ?? (flow === 'sent' ? t('send.sent') : flow === 'received' ? t('send.received') : flow === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : item.hasAssetData ? t('mobile.activityViews.utxoActivityScreen.assetActivity') : t('buttons.activity'))}
               subtitle={`${network.name} · ${item.zdag ? t('transactions.zdagConfirmed') : item.block && item.observedConfirmations > 0 ? t('send.confirmed') : t('send.pending')}`}
               amount={privateAmount ? HIDDEN_BALANCE : compactActivityAmountLabel(fullAmount.replace(/^−/, '-'))} time={date.time}
-              label={t('mobile.activityViews.nativeActivity.transactionLabel', { amount: privateAmount ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: status(item), date: date.label, time: date.time })}
+              label={replacement ? `${replacement}. ${label}` : label}
               disabled={!!chosen || state.status === 'loading'}
               onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }} />;
           }}
@@ -252,7 +256,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
       {chosen && <ScrollView testID="watch-activity-detail" style={s.detailOverlay} contentContainerStyle={[s.content, s.detailContent]}>
         <TransactionDetailLayout amount={detailAmount}
           asset={utxoActivityAssetIcon(chosen, network.chainId)} assetSymbol={chosen.assetAmount?.symbol}
-          direction={rowDirection(chosen) === 'sent' ? t('send.sent') : rowDirection(chosen) === 'received' ? t('send.received') : rowDirection(chosen) === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity')}
+          direction={replacementTitle(chosen) ?? (rowDirection(chosen) === 'sent' ? t('send.sent') : rowDirection(chosen) === 'received' ? t('send.received') : rowDirection(chosen) === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity'))}
           status={chosen.block && chosen.observedConfirmations > 0 ? t('send.confirmed') : status(chosen)}
           tone={chosen.block && chosen.observedConfirmations > 0 ? 'confirmed' : chosen.block === null ? 'pending' : 'unknown'}
           rows={[

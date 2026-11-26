@@ -498,7 +498,7 @@ export function createNativeUtxoSend(
               record: {
                 owner,
                 operation: 'wallet',
-                ...(selected.predecessor ? { replacementOf: selected.predecessor.txid } : {}),
+                ...(selected.predecessor ? { replacementOf: selected.predecessor.txid, replacementKind: selected.view.replacement?.mode } : {}),
                 rawTransaction: record.rawTransaction,
                 txid: record.txid,
                 url: record.url,

@@ -792,6 +792,17 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
         const { txid: cancelled } = await send.confirm(cancellation, credential);
         assert.notEqual(cancelled, bumpedId);
         assert.deepEqual(await send.availableReplacements(bumpedId, assertCurrent), []);
+        // The exact indexer observation can promote a retained row before the
+        // asynchronous ACK write completes.
+        assert.equal(await observeTransfer(cancelled), 'seen');
+        const labelled = [originalId, bumpedId, cancelled];
+        const submissionUrl = `${network.endpoint}/api/v2/sendtx/`;
+        assert.deepEqual(await records.activityReplacementKinds(recordSession(), recordOwner, submissionUrl, labelled),
+          new Map([[bumpedId, 'speed-up'], [cancelled, 'cancel']]));
+        assert.deepEqual(await records.activityReplacementKinds(recordSession(), recordOwner, 'https://other.invalid/api/v2/sendtx/', labelled), new Map());
+        assert.deepEqual(await records.activityReplacementKinds(recordSession(), {
+          ...recordOwner, account: { ...recordOwner.account, id: recordOwner.account.id + 1 },
+        }, submissionUrl, labelled), new Map());
         assert.equal(posted.length, before + 2);
       });
     }
