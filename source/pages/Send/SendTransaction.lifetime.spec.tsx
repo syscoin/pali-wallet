@@ -1094,6 +1094,57 @@ it.each([
   }
 );
 
+it('keeps a validated request cancellable while Retry is waiting and discards its late quote', async () => {
+  const { from, to } = mockQuery.tx;
+  mockFee.mockRejectedValueOnce({
+    code: 'DAPP_FEE_UNAVAILABLE',
+    failedFeeRequest: { from, to, value: '1000000000000000000' },
+  });
+  const normalQuote = mockFee.getMockImplementation()!;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  mockFee.mockImplementationOnce(async (...args: any[]) => {
+    await gate;
+    return normalQuote(...args);
+  });
+  render(<SendTransaction />);
+  await screen.findByText('send.unableToCalculateFees');
+  const retry = screen.getByRole('button', {
+    name: 'receive.retry',
+  }) as HTMLButtonElement;
+  fireEvent.click(retry);
+  await waitFor(() => expect(mockFee).toHaveBeenCalledTimes(2));
+  expect(screen.getByText(to)).toBeTruthy();
+  expect(screen.getByText('1.0 ETH')).toBeTruthy();
+  expect(screen.getByText('send.calculating')).toBeTruthy();
+  expect(retry.disabled).toBe(true);
+  fireEvent.click(retry);
+  const cancel = screen.getByRole('button', {
+    name: 'buttons.cancel',
+  }) as HTMLButtonElement;
+  expect(cancel.disabled).toBe(false);
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+  fireEvent.click(cancel);
+  await waitFor(() => expect(mockClose).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    release();
+  });
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'discardNativeEvmFeeReview'
+    )
+  ).toBe(true);
+  expect(mockFee).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+});
+
 it('keeps canonical token transfer recipient and raw amount visible when estimation fails', async () => {
   const recipient = '0x' + '77'.repeat(20);
   const request = mockQuery.tx;

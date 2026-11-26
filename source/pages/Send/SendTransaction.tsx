@@ -1324,7 +1324,6 @@ export const SendTransaction = () => {
         if (!isSmartAccountApproval) {
           if (!preparationIsCurrent()) return;
           setGenericFeeView(undefined);
-          setFailedFeeView(undefined);
           const nonce = customNonce ?? dataTx.nonce;
           if (customNonce !== undefined || dataTx.nonce !== undefined)
             await controllerEmitter(
@@ -1472,6 +1471,7 @@ export const SendTransaction = () => {
           setHasGasError(false);
           setHasTxDataError(false);
           setFeeQuoteNeedsRefresh(false);
+          setFailedFeeView(undefined);
           setInitialReviewError(undefined);
           setInitialLoading(false);
           setNonceRefreshRequired(false);
@@ -1509,8 +1509,7 @@ export const SendTransaction = () => {
           smartAccountFeeOverrides
         );
 
-        // Only update state if component is still mounted
-        if (isMounted) {
+        if (preparationIsCurrent()) {
           setHasGasError(gasLimitError);
           setHasTxDataError(isInvalidTxData);
           setFee(feeDetails);
@@ -1548,16 +1547,19 @@ export const SendTransaction = () => {
                 );
                 return;
               }
+              setFailedFeeView(undefined);
               setInitialReviewError('app.transactionApprovalLoading');
               setInitialLoading(false);
               return;
             }
             if (e.code === TRANSACTION_APPROVAL_EXPIRED) {
+              setFailedFeeView(undefined);
               setInitialReviewError('app.approvalExpired');
               setInitialLoading(false);
               return;
             }
           }
+          setFailedFeeView(undefined);
           setInitialLoading(false);
           if (nonceRefreshRequired) {
             setNonceRefreshing(false);
@@ -1939,21 +1941,35 @@ export const SendTransaction = () => {
         buttonText={t('settings.gotIt')}
       />
 
-      {initialLoading ? (
+      {initialLoading && !initialReviewError ? (
         <div className="flex items-center justify-center min-h-[400px]">
           <LoadingComponent />
         </div>
       ) : initialReviewError ? (
         <div className="flex w-full flex-col">
-          <div className="overflow-y-auto px-4 py-4 pb-24">
-            <p className="text-warning-info text-sm mb-3" role="alert">
-              {t(initialReviewError)}
-            </p>
+          <div
+            className="overflow-y-auto px-4 py-4"
+            style={{
+              paddingBottom:
+                'calc(var(--pali-toast-footer-clearance, 7rem) + 1rem)',
+            }}
+          >
             {failedRequest && (
               <>
                 <h2 className="text-lg font-semibold mb-3">
                   {t('send.transactionDetails')}
                 </h2>
+                {(!failedData || failedData === '0x') && (
+                  <div className="mb-4">
+                    <p className="text-xs text-brand-graylight">
+                      {t('send.requestedNativeValue')}
+                    </p>
+                    <p className="break-words text-2xl font-semibold">
+                      {formatEther(BigNumber.from(failedRequest.value))}{' '}
+                      {activeNetwork.currency?.toUpperCase()}
+                    </p>
+                  </div>
+                )}
                 {failedAsset && (
                   <AssetTransferSummary
                     transfer={createAssetTransferDisplay(failedAsset)}
@@ -2004,13 +2020,15 @@ export const SendTransaction = () => {
                         )
                       : failedRequest.to || t('receive.addressUnavailable')}
                   </dd>
-                  <dt>{t('send.requestedNativeValue')}</dt>
-                  <dd>
-                    {formatEther(BigNumber.from(failedRequest.value))}{' '}
-                    {activeNetwork.currency?.toUpperCase()}
-                  </dd>
-                  <dt>{t('send.networkFee')}</dt>
-                  <dd>{t('send.feeUnavailable')}</dd>
+                  {failedData && failedData !== '0x' && (
+                    <>
+                      <dt>{t('send.requestedNativeValue')}</dt>
+                      <dd>
+                        {formatEther(BigNumber.from(failedRequest.value))}{' '}
+                        {activeNetwork.currency?.toUpperCase()}
+                      </dd>
+                    </>
+                  )}
                 </dl>
                 {failedData && failedData !== '0x' && (
                   <details className="mt-3 text-xs">
@@ -2026,6 +2044,31 @@ export const SendTransaction = () => {
             )}
           </div>
           <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 z-50">
+            <div className="mb-3">
+              {(failedRequest || initialLoading) && (
+                <div
+                  role={initialLoading ? 'status' : undefined}
+                  className="flex justify-between gap-3 text-xs font-semibold"
+                >
+                  <span>{t('send.networkFee')}</span>
+                  <span>
+                    {t(
+                      initialLoading
+                        ? 'send.calculating'
+                        : 'send.feeUnavailable'
+                    )}
+                  </span>
+                </div>
+              )}
+              {!initialLoading && (
+                <p
+                  className="mt-1 text-xs leading-5 text-warning-info"
+                  role="alert"
+                >
+                  {t(initialReviewError)}
+                </p>
+              )}
+            </div>
             <div className="flex gap-3 justify-center">
               <Button
                 variant="secondary"
@@ -2043,9 +2086,9 @@ export const SendTransaction = () => {
                 <Button
                   variant="primary"
                   type="button"
-                  disabled={closing}
+                  disabled={closing || initialLoading}
                   onClick={() => {
-                    setInitialReviewError(undefined);
+                    if (initialLoading || closing) return;
                     setInitialLoading(true);
                     setFeeQuoteRevision((revision) => revision + 1);
                   }}
