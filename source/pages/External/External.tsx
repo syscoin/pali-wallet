@@ -49,7 +49,7 @@ const External: FC = () => {
     <BrowserRouter useTransitions={false}>
       <div
         data-pali-approval-surface
-        className="mx-auto w-full min-w-popup max-w-popup overflow-hidden font-poppins text-xl"
+        className="mx-auto w-full min-w-popup max-w-popup h-full min-h-popup font-poppins text-xl overflow-x-hidden"
       >
         <Router />
       </div>

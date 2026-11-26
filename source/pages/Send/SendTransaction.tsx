@@ -1922,7 +1922,7 @@ export const SendTransaction = () => {
           )}
         </div>
       ) : tx?.from ? (
-        <div className="flex flex-col w-full h-screen">
+        <div data-transaction-review className="flex flex-col w-full h-screen">
           <div
             className="flex-1 overflow-y-auto pb-20 remove-scrollbar"
             style={{

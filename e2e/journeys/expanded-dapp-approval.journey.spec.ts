@@ -158,27 +158,21 @@ test('external approval follows a real Chrome popup resize', async () => {
         'short approval scrolls without covering actions',
         async (capture) => {
           await resize({ width: 360, height: 390 });
-          const scroll = popup.locator('.flex-1.overflow-y-auto').first();
-          expect(
-            await scroll.evaluate((element) => element.scrollHeight)
-          ).toBeGreaterThan(
-            await scroll.evaluate((element) => element.clientHeight)
-          );
-          await scroll.evaluate((element) =>
-            element.scrollTo(0, element.scrollHeight)
-          );
-          expect(
-            await scroll.evaluate((element) => element.scrollTop)
-          ).toBeGreaterThan(0);
+          const { footer, inner } = await geometry();
+          await popup.mouse.move(inner.width / 2, footer.top - 20);
+          await popup.mouse.wheel(0, 800);
           const lastDetail = popup.getByText(
             `${en.send.total} (${en.send.amountAndFee})`,
             { exact: false }
           );
-          await expect(lastDetail).toBeInViewport();
-          const detailBounds = (await lastDetail.boundingBox())!;
-          expect(detailBounds.y + detailBounds.height).toBeLessThan(
-            (await geometry()).footer.top
-          );
+          await expect
+            .poll(async () => {
+              const bounds = await lastDetail.boundingBox();
+              return Boolean(
+                bounds && bounds.y >= 0 && bounds.y + bounds.height < footer.top
+              );
+            })
+            .toBe(true);
           await capture(popup);
           await checkLayout();
         }
