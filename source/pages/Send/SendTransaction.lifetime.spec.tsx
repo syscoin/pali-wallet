@@ -1065,6 +1065,35 @@ it('requires a fresh quote and explicit confirmation after an initial EOA quote 
   expect(submitted[0][1][4].genericReviewId).toBe('lifetime-fee-1');
 });
 
+it.each([
+  ['DAPP_FEE_REVERTED', 'send.feeEstimateReverted', false],
+  ['DAPP_FEE_ESTIMATE_UNAVAILABLE', 'send.feeEstimateUnsupported', false],
+  ['DAPP_FEE_INSUFFICIENT_FUNDS', 'send.insufficientFundsForGas', true],
+])(
+  'retains Cancel and gates Retry for %s without allowing confirmation',
+  async (code, wording, retryable) => {
+    mockFee.mockRejectedValueOnce(
+      Object.assign(new Error('ignored raw RPC text'), { code })
+    );
+    render(<SendTransaction />);
+    await screen.findByText(wording as string);
+    expect(screen.queryByText('ignored raw RPC text')).toBeNull();
+    expect(
+      Boolean(screen.queryByRole('button', { name: 'receive.retry' }))
+    ).toBe(retryable);
+    expect(
+      screen.queryByRole('button', { name: 'buttons.confirm' })
+    ).toBeNull();
+    await act(async () => mockButtonHandlers['buttons.cancel']());
+    expect(mockClose).toHaveBeenCalledTimes(1);
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'sendAndSaveEthTransaction'
+      )
+    ).toBe(false);
+  }
+);
+
 it('cancels the initial Smart Account review without signing or submitting', async () => {
   mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
   mockState.vault.accounts.HDAccount[0].smartAccount = {};

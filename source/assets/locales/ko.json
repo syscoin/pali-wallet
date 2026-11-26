@@ -604,6 +604,8 @@
     "unableToLoad": "로드할 수 없음",
     "smartAccountPendingReview": "저장된 스마트 계정 거래가 아직 해결되지 않았습니다. 다른 거래를 보내기 전에 활동을 열어 확인하세요.",
     "smartAccountPayerPending": "이 작업을 계속하려면 수수료 지불 계정의 이전 거래가 확인되어야 합니다. 확인을 기다린 후 다시 시도하세요.",
+    "feeEstimateReverted": "가스 추정 중 트랜잭션이 되돌려졌다고 네트워크에서 보고했습니다.",
+    "feeEstimateUnsupported": "이 RPC 엔드포인트는 가스 추정을 지원하지 않습니다.",
     "feeUnavailable": "수수료 사용 불가",
     "plusGasFee": " + 가스 수수료",
     "plusNetworkFee": " + 네트워크 수수료",

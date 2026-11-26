@@ -46,6 +46,10 @@ import { utils as syscoinTransactionTypes } from 'syscointx-js';
 
 import { getController, notificationManager } from '..';
 import { getBundledEvmChainMetadata } from '../../../shared/chainCatalogueData';
+import {
+  classifyDappGasEstimateError,
+  DappFeeReviewError,
+} from '../../../shared/dappFeeReviewError';
 import { normalizeDappTransaction } from '../../../shared/dappTransaction';
 import { assertSupportedEvmFees } from '../../../shared/dappTransaction.ts';
 import { readStoredDappPermissions } from '../../../shared/dappTypes';
@@ -12657,16 +12661,22 @@ class MainController {
       );
     };
     check();
-    return (
-      await this.prepareGenericEvmFeeReview(
-        params,
-        context,
-        walletNonce,
-        check,
-        { authorizeDapp, dappApprovalOwner: requestOwner },
-        { kind: 'dapp', request: requestOwner }
-      )
-    ).token;
+    try {
+      return (
+        await this.prepareGenericEvmFeeReview(
+          params,
+          context,
+          walletNonce,
+          check,
+          { authorizeDapp, dappApprovalOwner: requestOwner },
+          { kind: 'dapp', request: requestOwner }
+        )
+      ).token;
+    } catch (error) {
+      if (error instanceof EvmFeeBalanceError)
+        throw new DappFeeReviewError('DAPP_FEE_INSUFFICIENT_FUNDS');
+      throw error;
+    }
   }
 
   public async reviewWalletEvmFee(
@@ -13062,8 +13072,19 @@ class MainController {
                 : { kind: 'estimate' },
             assertCurrent,
             now: () => Math.floor(performance.now()),
-            read: (method: string, values: readonly unknown[]) =>
-              provider.send(method, [...values]),
+            read: (method: string, values: readonly unknown[]) => {
+              const response = provider.send(method, [...values]);
+              if (
+                feeAuthority.kind !== 'dapp' ||
+                admission.kind !== 'review' ||
+                method !== 'eth_estimateGas'
+              )
+                return response;
+              return response.catch((error: unknown) => {
+                assertCurrent();
+                throw classifyDappGasEstimateError(error) ?? error;
+              });
+            },
             verifyChain: async () => {
               await provider.verifyConfiguredChainId(true);
               assertCurrent();

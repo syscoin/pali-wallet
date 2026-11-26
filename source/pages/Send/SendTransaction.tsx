@@ -1212,6 +1212,9 @@ export const SendTransaction = () => {
   const handleConfirm = async () => {
     if (
       !mountedRef.current ||
+      initialLoading ||
+      initialReviewError ||
+      !hasCurrentGenericFee ||
       nonceRefreshRequired ||
       approvalActionRef.current !== 'ready'
     )
@@ -1520,7 +1523,8 @@ export const SendTransaction = () => {
 
         if (
           preparationIsCurrent() &&
-          generation === closeGenerationRef.current
+          generation === closeGenerationRef.current &&
+          (isSmartAccountApproval || genericFeeKeyRef.current === genericFeeKey)
         ) {
           if (!isSmartAccountApproval && e?.transactionNotBroadcast === true) {
             if (e.code === TRANSACTION_APPROVAL_LOADING) {
@@ -1558,7 +1562,15 @@ export const SendTransaction = () => {
             return;
           }
           if (!isSmartAccountApproval) {
-            setInitialReviewError('send.unableToCalculateFees');
+            setInitialReviewError(
+              e?.code === 'DAPP_FEE_REVERTED'
+                ? 'send.feeEstimateReverted'
+                : e?.code === 'DAPP_FEE_ESTIMATE_UNAVAILABLE'
+                ? 'send.feeEstimateUnsupported'
+                : e?.code === 'DAPP_FEE_INSUFFICIENT_FUNDS'
+                ? 'send.insufficientFundsForGas'
+                : 'send.unableToCalculateFees'
+            );
             return;
           }
           logError('error getting fees', 'Transaction', e);
@@ -1847,6 +1859,57 @@ export const SendTransaction = () => {
     approvedTokenInfos?.tokenDecimals,
   ]);
 
+  const failedRequest = (() => {
+    if (
+      !initialReviewError ||
+      initialReviewError === 'app.approvalExpired' ||
+      currentApprovalWalletContextKey !== approvedWalletContextKey
+    )
+      return;
+    try {
+      // Review the requested fields only. A failed quote cannot provide fee
+      // or token execution details, and the dapp's action label is not evidence.
+      const { from, to, data, chainId, value = 0 } = dataTx;
+      if (
+        typeof from !== 'string' ||
+        !/^0x[0-9a-f]{40}$/i.test(from) ||
+        from.toLowerCase() !== approvedContext.account.address.toLowerCase() ||
+        (chainId !== undefined &&
+          Number(chainId) !== approvedContext.chainId) ||
+        (typeof value !== 'string' && !Number.isSafeInteger(value)) ||
+        !/^(?:[0-9]{1,78}|0x[0-9a-f]{1,64})$/i.test(String(value)) ||
+        (data !== undefined &&
+          (typeof data !== 'string' || !/^0x(?:[0-9a-f]{2})*$/i.test(data)))
+      )
+        return;
+      const amount = BigNumber.from(value);
+      if (
+        amount.gt(
+          '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+        )
+      )
+        return;
+      return {
+        from,
+        to:
+          to == null
+            ? null
+            : /^0x[0-9a-f]{40}$/i.test(toAddressForProvider)
+            ? toAddressForProvider
+            : undefined,
+        value: formatEther(amount),
+        selector: data?.length > 10 ? `${data.slice(0, 10)}…` : data,
+      };
+    } catch {
+      // An invalid request must never be presented as a zero-value transfer.
+      return undefined;
+    }
+  })();
+  const canRetryInitialReview =
+    initialReviewError !== 'app.approvalExpired' &&
+    initialReviewError !== 'send.feeEstimateReverted' &&
+    initialReviewError !== 'send.feeEstimateUnsupported';
+
   const renderFeeNoticeText = (title: string, description: string) => (
     <>
       <p className="text-warning-info text-xs font-semibold mb-1">{t(title)}</p>
@@ -1898,28 +1961,81 @@ export const SendTransaction = () => {
           <LoadingComponent />
         </div>
       ) : initialReviewError ? (
-        <div className="text-center">
-          <p role="alert">{t(initialReviewError)}</p>
-          <Button type="button" disabled={closing} onClick={handleCancel}>
-            {t(
-              initialReviewError === 'app.approvalExpired'
-                ? 'buttons.close'
-                : 'buttons.cancel'
+        <div className="flex w-full flex-col">
+          <div className="overflow-y-auto px-4 py-4 pb-24">
+            <p className="text-warning-info text-sm mb-3" role="alert">
+              {t(initialReviewError)}
+            </p>
+            {failedRequest && (
+              <>
+                <h2 className="text-lg font-semibold mb-3">
+                  {t('send.transactionDetails')}
+                </h2>
+                <dl className="text-xs space-y-2 rounded-lg bg-bkg-2 p-3 mb-3 break-words">
+                  {host && (
+                    <>
+                      <dt>{t('transactions.origin')}</dt>
+                      <dd>{host}</dd>
+                    </>
+                  )}
+                  <dt>{t('nftDetails.network')}</dt>
+                  <dd>{activeNetwork.label || approvedContext.chainId}</dd>
+                  <dt>{t('send.from')}</dt>
+                  <dd>{failedRequest.from}</dd>
+                  <dt>{t('send.to')}</dt>
+                  <dd>
+                    {failedRequest.to === null
+                      ? t(
+                          'mobile.dappConsent.transactionReview.contractDeployment'
+                        )
+                      : failedRequest.to || t('receive.addressUnavailable')}
+                  </dd>
+                  <dt>{t('send.amount')}</dt>
+                  <dd>
+                    {failedRequest.value}{' '}
+                    {activeNetwork.currency?.toUpperCase()}
+                  </dd>
+                  {failedRequest.selector &&
+                    failedRequest.selector !== '0x' && (
+                      <>
+                        <dt>{t('send.data')}</dt>
+                        <dd>{failedRequest.selector}</dd>
+                      </>
+                    )}
+                </dl>
+              </>
             )}
-          </Button>
-          {initialReviewError !== 'app.approvalExpired' && (
-            <Button
-              type="button"
-              disabled={closing}
-              onClick={() => {
-                setInitialReviewError(undefined);
-                setInitialLoading(true);
-                setFeeQuoteRevision((revision) => revision + 1);
-              }}
-            >
-              {t('receive.retry')}
-            </Button>
-          )}
+          </div>
+          <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 z-50">
+            <div className="flex gap-3 justify-center">
+              <Button
+                variant="secondary"
+                type="button"
+                disabled={closing}
+                onClick={handleCancel}
+              >
+                {t(
+                  initialReviewError === 'app.approvalExpired'
+                    ? 'buttons.close'
+                    : 'buttons.cancel'
+                )}
+              </Button>
+              {canRetryInitialReview && (
+                <Button
+                  variant="primary"
+                  type="button"
+                  disabled={closing}
+                  onClick={() => {
+                    setInitialReviewError(undefined);
+                    setInitialLoading(true);
+                    setFeeQuoteRevision((revision) => revision + 1);
+                  }}
+                >
+                  {t('receive.retry')}
+                </Button>
+              )}
+            </div>
+          </ToastActionFooter>
         </div>
       ) : tx?.from ? (
         <div className="flex flex-col w-full h-screen">
