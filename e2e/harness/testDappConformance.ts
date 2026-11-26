@@ -18,6 +18,7 @@ import {
   assertExtensionVersion,
   expectedProviderIdentity,
 } from './extensionVersion';
+import type { LaunchOptions } from './launch';
 import { PaliWallet } from './pali';
 
 // Public Anvil fixture. This mnemonic must never be used on a public network.
@@ -240,7 +241,8 @@ export async function startLocalChains(
 }
 
 export async function launchConformanceWallet(
-  journeyName = 'test-dapp-conformance'
+  journeyName = 'test-dapp-conformance',
+  launchOptions?: LaunchOptions
 ) {
   const extensionPath = process.env.PALI_TEST_DAPP_EXTENSION_PATH;
   if (!extensionPath || !path.isAbsolute(extensionPath)) {
@@ -278,7 +280,7 @@ export async function launchConformanceWallet(
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const wallet = await Promise.race([
-      PaliWallet.launch(journeyName),
+      PaliWallet.launch(journeyName, launchOptions),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () => reject(new Error('Extension startup exceeded 60 seconds')),
