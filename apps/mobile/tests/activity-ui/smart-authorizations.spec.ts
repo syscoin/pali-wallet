@@ -81,7 +81,11 @@ test('All Networks sends only the exact pending authorization to the existing ca
 test('the normal Activity footer reaches an older operation after every other source is exhausted', async ({ page }) => {
   await page.goto('/?signed-instructions&older-authorization');
   const older = page.getByRole('button', { name: 'Load older activity', exact: true });
-  await expect(older).toBeVisible();
+  // Bring the virtualized first page into view before tapping its footer.
+  await older.scrollIntoViewIfNeeded();
+  await expect(page.getByTestId(/^activity-row-operation:/)).toHaveCount(20);
+  await older.scrollIntoViewIfNeeded();
+  await expect(older).toBeInViewport();
   await older.click();
   await expect(older).toHaveCount(0);
   await page.getByTestId(`activity-row-0x${'2'.repeat(64)}`).click();
