@@ -198,6 +198,23 @@ test('smart account: infra deploy, account creation, policy, activity', async ()
           return;
         }
         await registerButton.click();
+        const accountFee = wallet.page.getByText('Smart account maximum fee', {
+          exact: true,
+        });
+        const payerFee = wallet.page.getByText(
+          /^Maximum network fee(?: · gas tank)?$/i
+        );
+        await expect(accountFee).toBeVisible();
+        await expect(payerFee).toBeVisible();
+        await wallet.page.getByRole('button', { name: /^cancel$/i }).click();
+        await expect(accountFee).toBeHidden();
+        await expect(registerButton).toBeEnabled();
+        expect(await provider.getCode(smartAccountAddress)).toBe('0x');
+
+        await registerButton.click();
+        await expect(accountFee).toBeVisible();
+        await expect(payerFee).toBeVisible();
+        await wallet.page.getByRole('button', { name: /^confirm$/i }).click();
         // Deployment confirms on-chain before the card flips to the hydrated
         // "Current approval method" state.
         await expect(

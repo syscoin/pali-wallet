@@ -1,5 +1,6 @@
 import { Wallet } from 'ethers/wallet';
 
+import { SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED } from '../shared/smartAccountFeeQuote';
 import {
   buildSmartAccountUserOperation,
   encodeERC7579Executions,
@@ -9,6 +10,7 @@ import {
   paliEntryPointInterface,
   paliSmartAccountInterface,
 } from '../utils/smartAccount/contracts';
+import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHash';
 
 import type {
   EvmRetainedSignedRecord,
@@ -88,6 +90,83 @@ it('captures an authorization without inventing an outer transaction and preserv
   expect(() =>
     assertSmartAccountCancellationOperation(cap, noop, payer.address)
   ).toThrow();
+});
+
+const initCode = '0x' + '66'.repeat(20) + '1234';
+const registration = { ...noop, initCode };
+
+function captureAuthorizationCancellation(userOperation: typeof original) {
+  const retained = captureSmartAccountAuthorization({
+    chainId,
+    createdAt: 123,
+    payer: payer.address,
+    observedAt,
+    userOperation,
+  });
+  return captureSmartAccountCancellation({
+    ...input,
+    authorization: retained,
+    referenceHash: retained.operationHash,
+  });
+}
+
+it.each([
+  { label: 'the same hash', preVerificationGas: '100', sameHash: true },
+  { label: 'a different hash', preVerificationGas: '101', sameHash: false },
+])(
+  'rejects a replacement that would register the account with $label',
+  ({ preVerificationGas, sameHash }) => {
+    const cap = captureAuthorizationCancellation(registration);
+    const replacement = {
+      ...registration,
+      preVerificationGas,
+      signature: '0x',
+    };
+    expect(
+      getSmartAccountUserOpHash(replacement, chainId) ===
+        cap.authorization.operationHash
+    ).toBe(sameHash);
+    expect(() =>
+      assertSmartAccountCancellationOperation(cap, replacement, validator)
+    ).toThrow(
+      expect.objectContaining({
+        message: SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED,
+        transactionNotBroadcast: true,
+      })
+    );
+  }
+);
+
+it('allows a no-op with deployment initCode to revoke a counterfactual transfer', () => {
+  const transfer = encodeERC7579Executions([
+    { target: payer.address, value: '0x1', data: '0x' },
+  ]);
+  const cap = captureAuthorizationCancellation({
+    ...original,
+    initCode,
+    callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+      transfer.mode,
+      transfer.executionCalldata,
+    ]),
+  });
+  expect(() =>
+    assertSmartAccountCancellationOperation(
+      cap,
+      { ...registration, signature: '0x' },
+      validator
+    )
+  ).not.toThrow();
+});
+
+it('allows revoking a registration once the replacement no longer deploys the account', () => {
+  const cap = captureAuthorizationCancellation(registration);
+  expect(() =>
+    assertSmartAccountCancellationOperation(
+      cap,
+      { ...noop, signature: '0x' },
+      validator
+    )
+  ).not.toThrow();
 });
 
 it('can retry from a retired original outer only with the exact retained original authorization', () => {

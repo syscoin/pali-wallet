@@ -296,9 +296,10 @@ test('Ledger blocking also blocks custom checkbox and authorization without chan
   try {
     f.block(true); assert(f.checkbox().props.disabled); f.checkbox().props.onValueChange(true); f.button().props.onPress(); assert.deepEqual(f.acknowledgements, []);
     f.block(false); f.checkbox().props.onValueChange(true); f.button().props.onPress(); assert.deepEqual(f.acknowledgements, [true]);
-    const ordinary = f.render({ ...f.state(), intent: { kind: 'deploy' } });
+    const ordinary = f.render({ ...f.state(), intent: { kind: 'deploy' },
+      payerBudget: { address: f.state().account, gasTank: false, maximumFeeWei: '42000', maximumPrefundFeeWei: '0', maximumPrefundWei: '0' } });
     assert(!ordinary.some(element => element.type === 'Switch'));
-    ordinary.find(element => element.type === 'Button' && element.props.title === 'Authorize deployment')!.props.onPress(); assert.deepEqual(f.acknowledgements, [true, false]);
+    ordinary.find(element => element.type === 'Button' && element.props.title === 'Deploy smart account')!.props.onPress(); assert.deepEqual(f.acknowledgements, [true, false]);
   } finally { f.close(); }
 });
 

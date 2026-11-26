@@ -29,7 +29,7 @@ import {
 } from '../../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
 import { ExecutionSimulationUnsupportedError, SmartAccountPayerPendingError } from '../../../../source/utils/smartAccount/executionSimulationError.ts';
-import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED, type SmartAccountPayerBudget } from '../../../../source/shared/smartAccountFeeQuote.ts';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED, SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED, type SmartAccountPayerBudget } from '../../../../source/shared/smartAccountFeeQuote.ts';
 
 export class SmartAccountPayerQuoteUnavailable extends Error {
   constructor() {
@@ -654,9 +654,11 @@ export class NativeSmartAccountOperation {
   }
   private fail(preparationFailure?: 'INSUFFICIENT_ASSET', cause?: unknown) {
     if (this.disposed || this.snapshot.phase === 'complete') return;
-    let simulationMessage: string | undefined;
-    if (cause instanceof ExecutionSimulationUnsupportedError || cause instanceof SmartAccountPayerPendingError) {
-      try { this.check(); simulationMessage = cause.message; } catch { /* Preserve lifecycle failure. */ }
+    let currentFailureMessage: string | undefined;
+    if ((!this.signingStarted && this.snapshot.intent.kind === 'cancel-operation' && cause instanceof Error &&
+      cause.message === SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED) ||
+      cause instanceof ExecutionSimulationUnsupportedError || cause instanceof SmartAccountPayerPendingError) {
+      try { this.check(); currentFailureMessage = cause.message; } catch { /* Preserve lifecycle failure. */ }
     }
     // The shared submit path can wrap the quote error after confirmed prefund.
     const payerQuoteUnavailable = !this.snapshot.userOperationSubmissionStarted &&
@@ -674,8 +676,8 @@ export class NativeSmartAccountOperation {
       preparationFailure: this.signingStarted ? undefined : preparationFailure,
       error: cause instanceof Error && cause.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
         ? SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
-        : simulationMessage
-        ? simulationMessage + (this.signingStarted ? ' Check the account and Activity before starting again.' : '')
+        : currentFailureMessage
+        ? currentFailureMessage + (this.signingStarted ? ' Check the account and Activity before starting again.' : '')
         : this.signingStarted
         ? 'Authorization ended. Check the account and Activity before starting again.'
         : 'This operation could not be prepared. Return to your account and try again.',

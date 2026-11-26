@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT } from '../../shared/smartAccountControllerAuthority';
+import { SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED } from '../../shared/smartAccountFeeQuote';
 import { ConfirmationModal } from 'components/Modal';
 import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -245,11 +246,17 @@ export function useSmartAccountCancellation(
         throw new Error('Invalid Smart Account cancellation');
       setReview({ scope, prepared, expectedContext, assertCurrent });
       setView({ scope });
-    } catch {
+    } catch (error) {
       try {
         assertCurrent();
         finish();
-        alert.error(t('transactions.smartAccountCancelUnavailable'));
+        alert.error(
+          t(
+            error?.message === SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED
+              ? 'transactions.smartRegistrationCancelUnavailable'
+              : 'transactions.smartAccountCancelUnavailable'
+          )
+        );
       } catch {
         /* retired owner */
       }

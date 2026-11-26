@@ -1161,17 +1161,43 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     expect(mockAlert.error).not.toHaveBeenCalled();
   });
 
-  const beginRegistration = async (hydrate?: Promise<unknown>) => {
+  const beginRegistration = async (
+    hydrate?: Promise<unknown>,
+    cancel = false
+  ) => {
     mockVault.accounts[KeyringAccountType.SmartAccount][1].smartAccount =
       metadata(false);
     const pending = deferred<unknown>();
     const original = mockEmitter.getMockImplementation()!;
     let hydrationReads = 0;
     mockEmitter.mockImplementation((path: string[], ...args: any[]) => {
-      if (path[1] === 'prepareSmartAccountExecutions')
-        return Promise.resolve(
-          preparedExecution(args[0][0], metadata(false), 'registration')
+      if (
+        [
+          'prepareSmartAccountExecutions',
+          'reuseSmartAccountExecutions',
+        ].includes(path[1])
+      ) {
+        if (path[1] === 'prepareSmartAccountExecutions')
+          expect(args[0][2].includePayerBudget).toBe(true);
+        else expect(args[0][2].executionContextId).toBe('registration');
+        const prepared = preparedExecution(
+          args[0][0],
+          metadata(false),
+          'registration'
         );
+        return Promise.resolve({
+          ...prepared,
+          entryPointFeeQuote: {
+            ...prepared.entryPointFeeQuote,
+            payerBudget: {
+              gasTank: false,
+              maximumFeeWei: '36',
+              maximumPrefundWei: '6',
+              maximumPrefundFeeWei: '12',
+            },
+          },
+        });
+      }
       if (
         path[1] === 'assertSmartAccountExecutionContext' ||
         path[1] === 'assertSmartAccountPreparedNonce'
@@ -1196,6 +1222,26 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         name: 'settings.registerSmartAccount',
       })
     );
+    const review = await screen.findByRole('dialog', {
+      name: 'settings.smartAccountFeeReviewTitle',
+    });
+    expect(
+      within(review).getByText(
+        'transactions.smartAccountCancelMaximumDepositFee'
+      )
+    ).toBeTruthy();
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'signSmartAccountPreparedOwner'
+      )
+    ).toBe(false);
+    if (cancel) {
+      fireEvent.click(
+        within(review).getByRole('button', { name: 'Cancel review' })
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      return { ...pending, view };
+    }
     await approveInitialFee();
     await waitFor(() =>
       expect(
@@ -1206,6 +1252,19 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     );
     return { ...pending, view };
   };
+
+  it('cancels registration before approving the budget or signing', async () => {
+    await beginRegistration(undefined, true);
+    const methods = mockEmitter.mock.calls.map(([path]) => path[1]);
+    for (const method of [
+      'reuseSmartAccountExecutions',
+      'approveSmartAccountExecutionFeeQuote',
+      'signSmartAccountPreparedOwner',
+      'submitSmartAccountExecution',
+    ])
+      expect(methods).not.toContain(method);
+    expect(mockAlert.success).not.toHaveBeenCalled();
+  });
 
   it.each(['account', 'network', 'native key', 'unmount'])(
     'ignores a late registration error after %s',
@@ -1231,6 +1290,17 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         }) as HTMLButtonElement
       ).disabled
     ).toBe(false);
+  });
+
+  it('explains a payer budget refusal after registration signing', async () => {
+    const pending = await beginRegistration();
+    await act(async () =>
+      pending.reject(new Error('PALI_SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED'))
+    );
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      'send.smartAccountPayerFeeExceeded'
+    );
+    expect(mockAlert.success).not.toHaveBeenCalled();
   });
 
   it('completes registration in place and retains the caller', async () => {

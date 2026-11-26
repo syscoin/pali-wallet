@@ -100,6 +100,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let smartSendGatewayError: 'before-forwarding' | 'after-acceptance' | undefined;
   let nextPayerEstimate: (() => void | Promise<void>) | undefined;
   let payerGasEstimate = '0x186a0';
+  let fundingGasEstimate = '0x5208';
   const externalFinancialProofs: {hash:string;signature:string}[] = [];
   let possessionVerifier: ((validator: string, hash: string, proof: string) => boolean | string | undefined | Promise<boolean | string | undefined>) | undefined;
   const infrastructureBroadcasts: { rawTransaction: string; pending: NativeInfrastructurePending }[] = [];
@@ -267,7 +268,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
               ? '0x' + quoteInnerGas(call.data).toString(16)
               : innerGasEstimate;
           } else {
-            result = funding ? '0x5208' : payerGasEstimate;
+            result = funding ? fundingGasEstimate : payerGasEstimate;
           }
         }
         else if (request.method === 'eth_simulateV1') {
@@ -612,6 +613,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         release: release.resolve,
       };
     },
+    fundingGasEstimate(value: bigint) { fundingGasEstimate = '0x' + value.toString(16); },
     payerGasEstimate(value: bigint) { payerGasEstimate = '0x' + value.toString(16); },
     recordFinancialProof(hash:string,signature:string){externalFinancialProofs.push({hash,signature});},
     afterSecretLease(hook?: () => void) { afterSecretLease = hook; },
@@ -1236,13 +1238,13 @@ test('creation allocation retries the same saved address after a later read fail
   const f = await fixture({}, true);
   let deployment: NativeSmartAccountOperation | undefined, configuration: NativeSmartAccountOperation | undefined, noOp: NativeSmartAccountOperation | undefined;
   const authorize = async (operation: NativeSmartAccountOperation, expectedPurposes: readonly string[]) => {
-    const started = performance.now(), reviews: { purpose: string; elapsed: number }[] = [];
+    const reviews: string[] = [];
     let unexpectedPurpose: string | undefined;
     const unsubscribe = operation.subscribe(() => {
       const review = operation.getSnapshot().payerReview;
       if (review) {
         const expected = expectedPurposes[reviews.length];
-        reviews.push({ purpose: review.purpose, elapsed: performance.now() - started });
+        reviews.push(review.purpose);
         if (review.purpose !== expected) { unexpectedPurpose = review.purpose; operation.cancel(); return; }
         operation.confirmPayer(review.id);
       }
@@ -1258,8 +1260,7 @@ test('creation allocation retries the same saved address after a later read fail
       const snapshot = operation.getSnapshot();
       assert.equal(snapshot.phase, 'complete', JSON.stringify({ phase: snapshot.phase, error: snapshot.error,
         transactionSubmitted: snapshot.transactionHash !== null, userOperationSubmissionStarted: snapshot.userOperationSubmissionStarted, reviews }));
-      assert.deepEqual(reviews.map(review => review.purpose), expectedPurposes);
-      return reviews;
+      assert.deepEqual(reviews, expectedPurposes);
     } finally {
       unsubscribe(); signal.removeEventListener('abort', cancel);
     }
@@ -1276,8 +1277,15 @@ test('creation allocation retries the same saved address after a later read fail
     f.onBroadcast(async () => {
       if (f.submitted.length === 1) await new Promise(resolve => setTimeout(resolve, 1750));
     });
-    const deploymentReviews = await authorize(deployment, ['fund-account', 'submit-operation']);
-    assert(deploymentReviews[1]!.elapsed > 1500, 'the second consent must arrive after the former polling window');
+    const registrationReview = deployment.getSnapshot();
+    assert.equal(registrationReview.phase, 'authorize');
+    assert(BigInt(registrationReview.payerBudget!.maximumPrefundWei) > 0n);
+    assert(BigInt(registrationReview.payerBudget!.maximumPrefundFeeWei) > 0n);
+    assert(BigInt(registrationReview.payerBudget!.maximumFeeWei) > 0n);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+    await authorize(deployment, []);
+    assert.equal(f.submitted.length, 2);
     assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
     await deployment.dispose(); deployment = undefined;
     f.guardianStatus('no-policy'); f.fundedSmart();
@@ -1639,7 +1647,7 @@ test('recovery lists smart accounts on every saved chain and preserves their met
 });
 
 
-test('real smart deployment uses the owned payer, separate consent and durable SDK submission', { timeout: 45_000 }, async () => {
+test('real smart deployment reviews both payer costs once before durable SDK submission', { timeout: 45_000 }, async () => {
   const f = await fixture();
   let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
   try {
@@ -1658,25 +1666,20 @@ test('real smart deployment uses the owned payer, separate consent and durable S
     await deployment.prepare();
     assert.equal(deployment.getSnapshot().phase, 'authorize');
     assert.equal(f.submitted.length, 0);
-    const operation = deployment, started = performance.now();
-    const payerReviews: { purpose: string; elapsed: number }[] = [];
-    const unsubscribe = operation.subscribe(() => {
-      const review = operation.getSnapshot().payerReview;
-      if (review) {
-        payerReviews.push({ purpose: review.purpose, elapsed: performance.now() - started });
-        operation.confirmPayer(review.id);
-      }
-    });
-    let timedOut = false;
-    const timeout = setTimeout(() => { timedOut = true; operation.cancel(); }, 30_000);
-    try {
-      await operation.authorize(operation.getSnapshot().revision);
-      assert.equal(timedOut, false, JSON.stringify(operation.getSnapshot()));
-    } finally {
-      clearTimeout(timeout); unsubscribe();
-    }
-    assert.deepEqual(payerReviews.map(review => review.purpose), ['fund-account', 'submit-operation']);
-    assert(payerReviews[1]!.elapsed > 1500, 'the second consent must arrive after the former polling window');
+    const ready = deployment.getSnapshot();
+    assert(ready.payerBudget);
+    assert.equal(ready.payerBudget.address.toLowerCase(), owner.toLowerCase());
+    assert(BigInt(ready.maximumPrefundUnits!) > 0n);
+    assert(BigInt(ready.payerBudget.maximumFeeWei) > 0n);
+    assert(BigInt(ready.payerBudget.maximumPrefundWei) > 0n);
+    assert(BigInt(ready.payerBudget.maximumPrefundFeeWei) > 0n);
+    // Anvil 1.7.1 reports 21,001 for this transfer; the approved 25,200 covers it.
+    f.fundingGasEstimate(21_001n);
+    const beforeAuthorization = f.calls.length;
+    await deployment.authorize(ready.revision);
+    assert.deepEqual(f.calls.slice(beforeAuthorization).filter(method =>
+      method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas'), [],
+      'prefund and handleOps reuse the approved prices');
     assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
     assert.equal(f.submitted.length, 2);
     assert.deepEqual(submissionAtWire, [false, true], 'funding must not retire the UserOperation review');
@@ -1686,6 +1689,9 @@ test('real smart deployment uses the owned payer, separate consent and durable S
     assert.equal(funding.from, owner);
     assert.equal(funding.to, smart.address);
     assert(funding.value > 0n);
+    assert.equal(funding.gasLimit, 25_200n);
+    assert.equal(funding.gasLimit * funding.maxFeePerGas!, BigInt(ready.payerBudget.maximumPrefundFeeWei));
+    assert(execution.gasLimit > funding.gasLimit);
     assert.equal(execution.from, owner);
     assert.equal(execution.nonce, funding.nonce + 1);
     assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === smart.id)!.smartAccount!.isDeployed, true);
@@ -1700,7 +1706,7 @@ test('real smart deployment uses the owned payer, separate consent and durable S
 });
 
 
-for (const cancel of ['owner', 'lock'] as const) test(`real deployment ${cancel} retirement rejects the held payer review`, async () => {
+for (const cancel of ['owner', 'lock'] as const) test(`real deployment ${cancel} retirement rejects the prepared fee review`, async () => {
   const f = await fixture();
   let current = true;
   let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
@@ -1708,14 +1714,10 @@ for (const cancel of ['owner', 'lock'] as const) test(`real deployment ${cancel}
     await f.change({ kind: 'create-smart', label: 'Cancelled deployment',});
     deployment = await f.runtime.openSmartAccountDeployment(() => { assert(current, 'owner retired'); }, null);
     await deployment.prepare();
-    const pending = deployment.authorize(deployment.getSnapshot().revision);
-    for (let attempt = 0; attempt < 300 && !deployment.getSnapshot().payerReview && deployment.getSnapshot().phase !== 'failed'; attempt++)
-      await new Promise(resolve => setTimeout(resolve, 5));
-    const review = deployment.getSnapshot().payerReview;
-    assert(review);
+    const ready = deployment.getSnapshot();
+    assert(ready.payerBudget);
     if (cancel === 'owner') current = false; else f.owner.lock();
-    deployment.confirmPayer(review.id);
-    await pending;
+    await deployment.authorize(ready.revision);
     assert.equal(deployment.getSnapshot().phase, 'failed');
     assert.equal(f.submitted.length, 0);
   } finally { deployment?.dispose(); await f.close(); }
@@ -1761,25 +1763,7 @@ test('restart after the deployment receipt refreshes metadata without another tr
     f.onBroadcast(async () => {
       if (f.submitted.length === 1) await new Promise(resolve => setTimeout(resolve, 1750));
     });
-    const operation = deployment, started = performance.now();
-    const payerReviews: { purpose: string; elapsed: number }[] = [];
-    const unsubscribe = operation.subscribe(() => {
-      const review = operation.getSnapshot().payerReview;
-      if (review) {
-        payerReviews.push({ purpose: review.purpose, elapsed: performance.now() - started });
-        operation.confirmPayer(review.id);
-      }
-    });
-    let timedOut = false;
-    const timeout = setTimeout(() => { timedOut = true; operation.cancel(); }, 30_000);
-    try {
-      await operation.authorize(operation.getSnapshot().revision);
-      assert.equal(timedOut, false, JSON.stringify(operation.getSnapshot()));
-    } finally {
-      clearTimeout(timeout); unsubscribe();
-    }
-    assert.deepEqual(payerReviews.map(review => review.purpose), ['fund-account', 'submit-operation']);
-    assert(payerReviews[1]!.elapsed > 1500, 'the second consent must arrive after the former polling window');
+    await deployment.authorize(deployment.getSnapshot().revision);
     assert.equal(deployment.getSnapshot().phase, 'failed');
     assert.equal(f.submitted.length, 2);
     deployment.dispose();
@@ -1947,6 +1931,36 @@ for (const alreadyDeployed of [false, true]) test(`one Smart Send confirmation c
     assert.equal(f.spendabilityReads.native - initialReads.native, expectedReads);
     assert.equal(f.spendabilityReads.deposit - initialReads.deposit, alreadyDeployed ? expectedReads : expectedReads + 1);
   } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const fee of ['funding', 'submission'] as const) test(`standalone deploy can retry immediately after closing its fee review and rejects a higher ${fee} fee`, async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Deploy fee cap' });
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined, null);
+    await operation.prepare();
+    assert(operation.getSnapshot().payerBudget);
+    operation.cancel();
+    await operation.dispose();
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.payerSignatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined, null);
+    await operation.prepare();
+    const ready = operation.getSnapshot();
+    assert.equal(ready.phase, 'authorize');
+    assert(ready.payerBudget);
+    if (fee === 'funding') f.fundingGasEstimate(25_201n);
+    else f.payerGasEstimate(2_000_000n);
+    await operation.authorize(ready.revision);
+    assert.equal(operation.getSnapshot().error, 'PALI_SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED');
+    const fundingTransactions = fee === 'funding' ? 0 : 1;
+    assert.equal(f.payerSignatures.length, fundingTransactions);
+    assert.equal(f.submitted.length, fundingTransactions);
+    assert.equal(operation.getSnapshot().userOperationSubmissionStarted, false);
+    if (fundingTransactions) assert.equal(operation.getSnapshot().fundingConfirmed, true);
+  } finally { await operation?.dispose(); await f.close(); }
 });
 
 test('Smart Send refuses an increased payer fee after combined confirmation', async () => {
@@ -2135,11 +2149,7 @@ test('native deployment simulation refusal preserves its confirmed prefund and i
     assert.equal(prepared.phase, 'authorize');
     assert.notEqual(prepared.authorization?.initCode, '0x');
     f.rejectSimulationParent();
-    const stop = operation.subscribe(() => {
-      const review = operation!.getSnapshot().payerReview;
-      if (review) operation!.confirmPayer(review.id);
-    });
-    try { await operation.authorize(prepared.revision); } finally { stop(); }
+    await operation.authorize(prepared.revision);
     assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(operation.getSnapshot().fundingConfirmed, true);
     assert.equal(f.payerSignatures.length, 2);
@@ -2250,6 +2260,41 @@ async function inspectSmartSendAtPayerQuote(
 function retireSmartSendAtPayerQuote(f: Awaited<ReturnType<typeof fixture>>, operation: NativeSmartAccountOperation) {
   return inspectSmartSendAtPayerQuote(f, operation, () => operation.cancel());
 }
+
+test('interrupted standalone registration cannot be cancelled and can be retried after clearing Activity', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Registration retry' });
+    f.fundedSmart();
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined, null);
+    await operation.prepare();
+    const hash = operation.getSnapshot().userOperationHash!;
+    await retireSmartSendAtPayerQuote(f, operation);
+    assert.equal(f.signatures.length, 1);
+    assert.equal(f.submitted.length, 0);
+    await operation.dispose();
+    const saved = () => f.runtime.listSmartAccountAuthorizations({ maximum: 20 }, new AbortController().signal, () => undefined);
+    assert.equal((await saved()).entries[0]?.operationHash, hash);
+    const reads = f.credentialReads;
+    operation = await f.runtime.openSmartAccountCancellation({ originalHash: hash }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(operation.getSnapshot().error, 'SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED');
+    assert.equal(f.credentialReads, reads);
+    assert.equal(f.signatures.length, 1);
+    assert.equal(f.payerSignatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+    await operation.dispose();
+    await f.runtime.resetActivity(() => undefined, () => undefined);
+    assert.equal((await saved()).entries.length, 0);
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined, null);
+    await operation.prepare();
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+  } finally { await operation?.dispose(); await f.close(); }
+});
 
 for(const path of ['standalone','pending-outer','consumed-outer','pending-counterfactual'] as const)test(`native Smart cancellation revokes the same inner nonce using ${path} delivery`,async()=>{
  const f=await fixture({},true);let original:NativeSmartAccountOperation|undefined,cancel:NativeSmartAccountOperation|undefined;
@@ -2413,16 +2458,11 @@ for (const loseCredit of [false, true]) test(`gas-tank deployment with zero paye
     operation = await f.runtime.openSmartAccountDeployment(() => undefined, null);
     await operation.prepare();
     assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
-    const sending = operation.authorize(operation.getSnapshot().revision);
-    for (let attempt = 0; attempt < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; attempt++)
-      await new Promise(resolve => setTimeout(resolve, 5));
-    const payer = operation.getSnapshot().payerReview;
-    assert(payer, JSON.stringify(operation.getSnapshot()));
-    assert.equal(payer.coveredFeeUnits, payer.maximumFeeUnits);
-    assert.equal(payer.maximumTotalUnits, '0');
+    const ready = operation.getSnapshot();
+    assert.equal(ready.payerBudget?.gasTank, true);
+    assert.equal(ready.payerBudget.maximumPrefundWei, '0');
     if (loseCredit) f.loseGasCredit();
-    operation.confirmPayer(payer.id);
-    await sending;
+    await operation.authorize(ready.revision);
     assert.equal(operation.getSnapshot().phase, loseCredit ? 'failed' : 'complete', JSON.stringify(operation.getSnapshot()));
     assert.equal(f.submitted.length, loseCredit ? 0 : 1);
   } finally { operation?.dispose(); await f.close(); }
@@ -3015,6 +3055,31 @@ for (const outcome of ['success', 'revert', 'lock-after-broadcast']) test(`real 
 
 const savedSmartAccount = (record: unknown) => (record as any).groups.find((group: any) => group.key === '60').accounts.SmartAccount[0];
 
+test('an unchanged counterfactual metadata refresh keeps custody ready when leaving the Wallet tab', async () => {
+  const view = new AbortController();
+  let armed = false, writes = 0, published = false;
+  const f = await fixture({ after(kind, sql) {
+    if (armed && kind === 'run' && sql.startsWith('UPDATE keyring_records')) {
+      writes++;
+      view.abort();
+    }
+  } });
+  try {
+    await f.change({ kind: 'create-smart', label: 'Undeployed account' });
+    const before = f.owner.getCatalogue();
+    armed = true;
+    const observation = await f.runtime.refreshSmartAccountMetadata(view.signal, () => {
+      if (view.signal.aborted) throw Error('CANCELLED');
+    }, () => { published = true; });
+    view.abort();
+    assert.equal(observation, null);
+    assert.equal(writes, 0);
+    assert.equal(published, false);
+    assert.equal(f.owner.getCatalogue(), before);
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+  } finally { await f.close(); }
+});
+
 test('owned Smart metadata refresh commits shared observations and survives authenticated cold reopen', async () => {
   const f = await fixture();
   try {
@@ -3034,6 +3099,12 @@ test('owned Smart metadata refresh commits shared observations and survives auth
     assert.equal(published, true, 'the public callback runs after publication');
     assert.equal(f.owner.getSnapshot().phase, 'ready', 'a UI callback failure does not lock custody');
     assert.equal(f.credentialReads, credentialReads, 'public metadata refresh does not retrieve a signing credential');
+    const refreshed = f.owner.getCatalogue();
+    let republished = false;
+    const observation = await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined, () => { republished = true; });
+    assert.equal(observation?.exists, true);
+    assert.equal(republished, false);
+    assert.equal(f.owner.getCatalogue(), refreshed);
     const after = (await f.inspectRecovery()).record;
     const accountAfter = savedSmartAccount(after);
     assert.deepEqual((after as any).recovery, (before as any).recovery);
@@ -6387,13 +6458,7 @@ test('owned smart authentication survives owner and payer prompt interruptions w
     const auth = ownedSmartAuthentication(f);
     operation = await f.runtime.openSmartAccountDeployment(auth.guard, auth.binding);
     await operation.prepare();
-    const pending = operation.authorize(operation.getSnapshot().revision);
-    for (let i = 0; i < 300 && !['complete', 'failed'].includes(operation.getSnapshot().phase); i++) {
-      const review = operation.getSnapshot().payerReview;
-      if (review) { operation.confirmPayer(review.id); operation.confirmPayer(review.id); }
-      await new Promise(resolve => setTimeout(resolve, 5));
-    }
-    await pending;
+    await operation.authorize(operation.getSnapshot().revision);
     assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
     assert.equal(auth.requests(), 3, 'one owner proof and two separately approved payer signatures');
     assert.equal(f.signatures.length, 1); assert.equal(f.submitted.length, 2);

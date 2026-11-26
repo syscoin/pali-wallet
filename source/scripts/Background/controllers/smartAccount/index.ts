@@ -2672,6 +2672,7 @@ class SmartAccountController {
             ? {
                 ...context,
                 userOperation: context.userOperation,
+                ...(budget ? { reviewedPayerBudget: budget } : {}),
                 expectedErc20Transfers:
                   context.prepared?.expectedErc20Transfers,
               }

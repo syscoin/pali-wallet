@@ -9,7 +9,7 @@ const { structure } = require('./localeStructure');
 const MAX_SCAN_CODEPOINTS = 2048;
 const MAX_WORDS = 256;
 const MAX_CANDIDATES = 150000;
-const MAX_REPLACEMENTS = 512;
+const MAX_REPLACEMENTS = 640;
 const byteLength = (value) => Buffer.byteLength(value);
 const expression = (parts) =>
   parts
