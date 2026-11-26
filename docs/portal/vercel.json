@@ -2,6 +2,11 @@
   "cleanUrls": true,
   "redirects": [
     {
+      "source": "/:locale(de|es|fr|ja|ko|pt|ru|zh)",
+      "destination": "/:locale/",
+      "permanent": true
+    },
+    {
       "source": "/:locale(de|es|fr|ja|ko|pt|ru|zh)/privacy",
       "destination": "/privacy",
       "permanent": true
