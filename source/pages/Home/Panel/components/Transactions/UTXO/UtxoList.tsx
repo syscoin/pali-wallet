@@ -33,6 +33,7 @@ import {
 import { getTokenLogo } from 'utils/index';
 import { ellipsis } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import {
   getSyscoinActivityAssetLabel,
   getSyscoinTransactionTypeStyle,
@@ -49,6 +50,7 @@ import {
 } from 'utils/transactionDisplay';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
+import { UtxoReplacementActions } from './UtxoReplacementActions';
 import {
   getCachedUtxoTransactionDetails,
   mergeAccountOwnershipFlags,
@@ -68,8 +70,10 @@ const mergeHistoryRows = (...lists: ITransactionInfoUtxo[][]) => {
 };
 
 const UtxoTransactionsListComponentBase = ({
+  locallyAcknowledged = false,
   tx,
 }: {
+  locallyAcknowledged?: boolean;
   tx: ITransactionInfoUtxo;
 }) => {
   const { navigate, useCopyClipboard, alert } = useUtils();
@@ -81,6 +85,7 @@ const UtxoTransactionsListComponentBase = ({
   );
   const activeAssets = useSelector(selectActiveAccountAssets);
   const walletScope = useSelector(getWalletNavigationScope);
+  const explorer = useSelector(selectExplorerUrl);
   const isReplaced = useSelector(
     (state: RootState) =>
       !isTransactionInBlock(tx) &&
@@ -219,6 +224,18 @@ const UtxoTransactionsListComponentBase = ({
     );
     sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
   }
+
+  const canOpenReplacementMenu =
+    /^[a-f0-9]{64}$/i.test(tx.txid) &&
+    !isConfirmed &&
+    !isTransactionInBlock(displayTransaction) &&
+    !isReplaced &&
+    !(
+      'isCanceled' in displayTransaction &&
+      displayTransaction.isCanceled === true
+    ) &&
+    !tokenOperation &&
+    (nativeDirection === 'sent' || (!nativeDirection && locallyAcknowledged));
 
   const handleGoTxDetails = () => {
     navigate('/home/details', {
@@ -396,15 +413,35 @@ const UtxoTransactionsListComponentBase = ({
         )}
       </div>
 
-      <div>
-        <Tooltip content={t('notifications.clickToView')}>
-          <DetailArrowSvg
-            ariaLabel={t('notifications.clickToView')}
-            className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
-            onClick={handleGoTxDetails}
-          />
-        </Tooltip>
-      </div>
+      {canOpenReplacementMenu ? (
+        <UtxoReplacementActions
+          key={scope}
+          currency={activeNetwork.currency}
+          txid={tx.txid.toLowerCase()}
+          menu={{
+            alert,
+            scope: walletScope,
+            onDetails: handleGoTxDetails,
+            ...(explorer && {
+              onExplorer: () =>
+                window.open(
+                  buildExplorerUrl(explorer, 'tx', tx.txid),
+                  '_blank'
+                ),
+            }),
+          }}
+        />
+      ) : (
+        <div>
+          <Tooltip content={t('notifications.clickToView')}>
+            <DetailArrowSvg
+              ariaLabel={t('notifications.clickToView')}
+              className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
+              onClick={handleGoTxDetails}
+            />
+          </Tooltip>
+        </div>
+      )}
     </div>
   );
 };
@@ -431,7 +468,19 @@ export const UtxoTransactionsList = ({
     selectActiveAccountTransactions
   );
 
-  const { chainId, url: networkUrl } = activeNetwork as any;
+  const { chainId, url: networkUrl } = activeNetwork;
+  const scopedTransactions = currentAccountTransactions?.syscoin?.[chainId];
+  // Only Redux's local ACK can supply custody provenance for a compact row.
+  // Paged Blockbook responses can contain arbitrary fields.
+  const locallyAcknowledged = useMemo(
+    () =>
+      new Set(
+        scopedTransactions
+          ?.filter((transaction) => transaction.localAcknowledgedInputs)
+          .map((transaction) => transaction.txid.toLowerCase())
+      ),
+    [scopedTransactions]
+  );
   const confirmationContext = getHomeBrowsingScope(
     { ...currentAccount, ...activeAccountRef },
     activeNetwork,
@@ -652,7 +701,11 @@ export const UtxoTransactionsList = ({
   return (
     <>
       {array.slice(0, visibleCount).map((tx) => (
-        <UtxoTransactionsListComponent key={tx.txid} tx={tx} />
+        <UtxoTransactionsListComponent
+          key={tx.txid}
+          locallyAcknowledged={locallyAcknowledged.has(tx.txid.toLowerCase())}
+          tx={tx}
+        />
       ))}
       {networkUrl
         ? (reconciliation || canLoadPage || array.length > visibleCount) && (

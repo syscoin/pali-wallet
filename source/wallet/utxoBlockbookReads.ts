@@ -1,9 +1,13 @@
 import {
   boundedResponseText,
   cancelResponseBody,
+  checkAborted,
   ResponseSizeLimitError,
 } from '../shared/boundedHttp.ts';
-import { UTXO_REVIEW_FUNDING_CHANGED } from '../shared/utxoSendErrors.ts';
+import {
+  UTXO_FUNDING_UNAVAILABLE,
+  UTXO_REVIEW_FUNDING_CHANGED,
+} from '../shared/utxoSendErrors.ts';
 import { UTXO_DETAIL_RESPONSE_BYTES } from '../shared/utxoTransactionDetailCache.ts';
 
 import { fetchUtxoRead } from './utxoReadRetry.ts';
@@ -24,6 +28,41 @@ const RESPONSE_BYTES = 1024 * 1024;
 const OPERATION_BYTES = RESPONSE_BYTES * 2;
 const READ_TIMEOUT_MS = 12_000;
 const FEE = '/api/v2/estimatefee/1';
+
+function fundingError(
+  code: typeof UTXO_FUNDING_UNAVAILABLE | typeof UTXO_REVIEW_FUNDING_CHANGED
+) {
+  return Object.assign(new Error(code), {
+    code,
+    error: true,
+    transactionNotBroadcast: true,
+  });
+}
+
+function parseFundingOutpoints(body: string): Set<string> {
+  const rows: unknown = JSON.parse(body);
+  if (!Array.isArray(rows)) throw new Error('Invalid funding response');
+  const outpoints = new Set<string>();
+  for (const row of rows) {
+    const { txid, txId, vout } = row ?? {};
+    const hash = txid ?? txId;
+    if (
+      typeof hash !== 'string' ||
+      !/^[0-9a-fA-F]{64}$/.test(hash) ||
+      (txid !== undefined &&
+        txId !== undefined &&
+        (typeof txid !== 'string' ||
+          typeof txId !== 'string' ||
+          txid.toLowerCase() !== txId.toLowerCase())) ||
+      !Number.isSafeInteger(vout) ||
+      vout < 0 ||
+      vout > 0xffffffff
+    )
+      throw new Error('Invalid funding response');
+    outpoints.add(`${hash.toLowerCase()}:${vout}`);
+  }
+  return outpoints;
+}
 
 /** A background-owned Blockbook GET port for one captured wallet read. */
 export function createOwnedUtxoBlockbookRead(
@@ -74,11 +113,11 @@ export function createOwnedUtxoBlockbookRead(
   let consumed = 0;
   const check = () => {
     assertCurrent();
-    if (signal.aborted) throw new Error('Wallet UTXO read was cancelled');
+    checkAborted(signal);
   };
   check();
 
-  async function read(url: string, retry = true) {
+  async function read(url: string, funding = false) {
     const controller = new AbortController();
     const cancel = () => controller.abort();
     signal.addEventListener('abort', cancel, { once: true });
@@ -99,7 +138,8 @@ export function createOwnedUtxoBlockbookRead(
         },
         check,
         deadline,
-        retry
+        true,
+        funding
       );
       check();
       if (response.redirected || response.url !== url) {
@@ -139,6 +179,17 @@ export function createOwnedUtxoBlockbookRead(
     }
   }
 
+  async function readFunding(url: string) {
+    try {
+      const { body, status } = await read(url, true);
+      if (status === 200 && body !== null)
+        return { body, outpoints: parseFundingOutpoints(body) };
+    } catch {
+      check();
+    }
+    throw fundingError(UTXO_FUNDING_UNAVAILABLE);
+  }
+
   // Prevout verification and signing enrichment can reuse one exact body.
   // An SPT quote also shares discovery between the builder and consent check.
   const reads = new Map<string, ReturnType<typeof read>>();
@@ -149,41 +200,13 @@ export function createOwnedUtxoBlockbookRead(
     assertCurrent: check,
     async assertReviewedInputsAvailable(outpoints: readonly string[]) {
       check();
-      try {
-        if (walletFunding && outpoints.length) {
-          // Confirm uses one fresh read against the same account as the quote.
-          const { body } = await read(base + walletFunding, false);
-          const rows: unknown = body === null ? null : JSON.parse(body);
-          if (Array.isArray(rows)) {
-            const missing = new Set(outpoints);
-            for (const row of rows) {
-              const { txid, txId, vout } = row ?? {};
-              const hash = txid ?? txId;
-              if (
-                typeof hash === 'string' &&
-                /^[0-9a-fA-F]{64}$/.test(hash) &&
-                (txid === undefined ||
-                  txId === undefined ||
-                  (typeof txid === 'string' &&
-                    typeof txId === 'string' &&
-                    txid.toLowerCase() === txId.toLowerCase())) &&
-                Number.isSafeInteger(vout)
-              ) {
-                missing.delete(`${hash.toLowerCase()}:${vout}`);
-              }
-            }
-            check();
-            if (!missing.size) return;
-          }
-        }
-      } catch {
-        // A failed or malformed read cannot establish that an input was spent.
-        check();
-      }
-      throw Object.assign(new Error(UTXO_REVIEW_FUNDING_CHANGED), {
-        code: UTXO_REVIEW_FUNDING_CHANGED,
-        transactionNotBroadcast: true,
-      });
+      if (!walletFunding || !outpoints.length)
+        throw fundingError(UTXO_FUNDING_UNAVAILABLE);
+      // One fresh snapshot for the reviewed account, with bounded GET retries.
+      const { outpoints: available } = await readFunding(base + walletFunding);
+      check();
+      if (outpoints.some((point) => !available.has(point)))
+        throw fundingError(UTXO_REVIEW_FUNDING_CHANGED);
     },
     async fetch(
       input: RequestInfo | URL,
@@ -203,6 +226,12 @@ export function createOwnedUtxoBlockbookRead(
       const txid = /^\/api\/v2\/tx\/([0-9a-f]{64})$/.exec(path)?.[1];
       if (!allowed.has(path) && !(wallet && txid))
         throw new Error('Invalid owned Blockbook route');
+
+      if (wallet && path.startsWith('/api/v2/utxo/')) {
+        const { body } = await readFunding(url);
+        check();
+        return new Response(body);
+      }
 
       const reusable = !!txid || path === addressDiscovery;
       let pending = reusable ? reads.get(path) : undefined;

@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import React, { useState } from 'react';
 
 import { SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT } from '../../shared/smartAccountControllerAuthority';
@@ -82,6 +82,7 @@ jest.mock('components/index', () => ({
   Button: jest.requireActual('components/Button/Button').Button,
 }));
 jest.mock('components/Icon/Icon', () => ({
+  Icon: () => null,
   ExternalLinkSvg: () => null,
   TrashIconSvg: () => null,
   LoadingSvg: () => <span>Loading</span>,
@@ -376,7 +377,9 @@ it('ignores a delayed quote after Cancel and latches any retained confirmation c
   render(<Harness />);
   openSpeedUp();
   const confirm = mockModal.onClick;
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' })
+  );
   await settleQuote(pending, quote());
   confirm();
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -479,7 +482,9 @@ it('keeps a fresh preview independent of an earlier cancelled request', async ()
   render(<Harness />);
   openSpeedUp();
   const oldClose = mockModal.onClose;
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' })
+  );
   openSpeedUp();
   act(() => oldClose());
   await settleQuote(first, quote('999'));

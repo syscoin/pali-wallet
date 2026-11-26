@@ -20,6 +20,7 @@ import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { ITokenSysProps } from 'types/tokens';
+import { SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS } from 'utils/constants';
 import { handleTransactionError } from 'utils/errorHandling';
 import { parseUnits } from 'utils/ethersV6Compat';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
@@ -615,7 +616,8 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                 ...(nativeSweep ? { nativeSweep: true } : {}),
                 token: null, // Explicitly pass null for native transactions
               },
-            ]
+            ],
+            SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
           )) as {
             fee: number;
             grossAmount?: string;
@@ -784,7 +786,8 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                   guid: selectedAsset.assetGuid,
                 },
               },
-            ]
+            ],
+            SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
           )) as { fee: number; psbt: any; utxoFeeReview: UtxoWalletFeeReview };
           if (!isCurrentPreparation()) return;
 
@@ -1255,9 +1258,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                   ? t('send.zdagOption', {
                       currency: activeNetwork.currency.toUpperCase(),
                     })
-                  : t('send.rbfOption', {
-                      currency: activeNetwork.currency.toUpperCase(),
-                    })
+                  : t('send.rbfOption')
               }
             >
               <Icon isSvg name="Info" />

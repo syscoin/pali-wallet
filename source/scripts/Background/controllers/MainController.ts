@@ -215,6 +215,7 @@ import {
 import {
   availableUtxoReplacementKinds,
   prepareUtxoReplacement as buildUtxoReplacement,
+  readUtxoReplacementFee,
   utxoReplacementReads,
   type UtxoReplacementKind,
 } from '../../../wallet/utxoReplacement';
@@ -1686,8 +1687,11 @@ class MainController {
 
   public async prepareUtxoReplacement(
     txid: string,
-    kind: UtxoReplacementKind
+    kind: UtxoReplacementKind,
+    expectedScope?: IWalletNavigationScope
   ): Promise<ExtensionUtxoReplacementReview> {
+    if (expectedScope !== undefined)
+      this.assertAssetMutationContext(expectedScope);
     if (kind !== 'speed-up' && kind !== 'cancel')
       throw new Error('Invalid UTXO replacement action');
     const signing = this.captureReplacementSigning();
@@ -1715,13 +1719,14 @@ class MainController {
       },
     };
     const binding = await signing.withRead(async (read) => {
-      const rate = await readPublicSyscoinFee(network.url, read);
+      const rate = await readUtxoReplacementFee(network.url, read);
       read.assertCurrent();
       const prepared = await buildUtxoReplacement({
         scope,
         predecessor,
         kind,
-        feeRateSatoshisPerVbyte: String(utxoFeeRateUnits(rate)),
+        feeRateSatoshisPerVbyte:
+          rate === undefined ? undefined : String(utxoFeeRateUnits(rate)),
         ...utxoReplacementReads(scope, read),
         isOwnedAddress: (address) => address === context.account.address,
         assertCurrent: assertWalletReviewCurrent,

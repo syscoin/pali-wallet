@@ -7,6 +7,7 @@ import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import { AppLayout } from 'components/Layout/AppLayout';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS } from 'utils/constants';
 import { createNavigationContext, navigateWithContext } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
@@ -706,7 +707,8 @@ describe('send forms across wallet navigation', () => {
       });
       expect(mockEmitter).toHaveBeenCalledWith(
         ['wallet', 'getEstimateSysTransactionFee'],
-        expect.any(Array)
+        expect.any(Array),
+        SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
       );
       if (change === 'account') mockState.vault.activeAccount.id = 1;
       if (change === 'network') mockState.vault.activeNetwork.chainId = 57;
@@ -813,7 +815,8 @@ describe('send forms across wallet navigation', () => {
             amount: '0.00010000',
             token: { symbol: 'SYSX', guid: '123456' },
           }),
-        ]
+        ],
+        SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
       );
       // Exercise the actual selected-asset refresh effect while the unsigned
       // estimator is pending, not an object mutated behind a React ref.
@@ -892,7 +895,8 @@ describe('send forms across wallet navigation', () => {
       });
       expect(mockEmitter).toHaveBeenCalledWith(
         ['wallet', 'getEstimateSysTransactionFee'],
-        expect.any(Array)
+        expect.any(Array),
+        SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
       );
       mockState.testAssets = {
         ethereum: [],
@@ -975,7 +979,8 @@ describe('send forms across wallet navigation', () => {
       });
       expect(mockEmitter).toHaveBeenCalledWith(
         ['wallet', 'getEstimateSysTransactionFee'],
-        expect.any(Array)
+        expect.any(Array),
+        SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
       );
       if (field === 'asset') {
         fireEvent.click(screen.getByText('ALT').closest('button'));
@@ -1188,7 +1193,8 @@ describe('send forms across wallet navigation', () => {
         });
         expect(mockEmitter).toHaveBeenCalledWith(
           ['wallet', 'getEstimateSysTransactionFee'],
-          [expect.objectContaining({ amount, isMax })]
+          [expect.objectContaining({ amount, isMax })],
+          SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
         );
         const [path, options] = mockNavigate.mock.calls.find(
           ([target]) => target === '/send/confirm'
@@ -1599,7 +1605,8 @@ describe('send forms across wallet navigation', () => {
       expect(saved.isMaxSend).toBe(false);
       expect(mockEmitter).not.toHaveBeenCalledWith(
         ['wallet', 'getEstimateSysTransactionFee'],
-        expect.anything()
+        expect.anything(),
+        SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
       );
     }
   );
@@ -1752,7 +1759,8 @@ describe('send forms across wallet navigation', () => {
               amount: builderAmount,
               token: { symbol: 'PQAS', guid: '12' },
             }),
-          ]
+          ],
+          SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
         );
         const [path, options] = mockNavigate.mock.calls.find(
           ([target]) => target === '/send/confirm'
@@ -2078,7 +2086,8 @@ describe('send forms across wallet navigation', () => {
             isMax: true,
             nativeSweep: true,
           }),
-        ]
+        ],
+        SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
       );
       expect(navigateWithContext).toHaveBeenCalledWith(
         mockNavigate,
@@ -2285,7 +2294,8 @@ describe('send forms across wallet navigation', () => {
     });
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'getEstimateSysTransactionFee'],
-      [expect.objectContaining({ amount: '0.09775761', isMax: true })]
+      [expect.objectContaining({ amount: '0.09775761', isMax: true })],
+      SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
     );
     expect(navigateWithContext).toHaveBeenCalledWith(
       mockNavigate,
@@ -2438,7 +2448,8 @@ describe('send forms across wallet navigation', () => {
     });
     expect(mockEmitter).toHaveBeenLastCalledWith(
       ['wallet', 'getEstimateSysTransactionFee'],
-      [expect.objectContaining({ amount: '0.09775761', isMax: true })]
+      [expect.objectContaining({ amount: '0.09775761', isMax: true })],
+      SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
     );
     expect(navigateWithContext).toHaveBeenCalledTimes(1);
   });
@@ -2480,7 +2491,8 @@ describe('send forms across wallet navigation', () => {
       });
       expect(mockEmitter).toHaveBeenCalledWith(
         ['wallet', 'getEstimateSysTransactionFee'],
-        [expect.objectContaining({ amount, isMax: false })]
+        [expect.objectContaining({ amount, isMax: false })],
+        SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
       );
       if (fee === 1e-8) expect(navigateWithContext).toHaveBeenCalled();
       else {

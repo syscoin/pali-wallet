@@ -18,7 +18,7 @@ import {
   prepareUtxoSignedBinding,
   utxoSubmissionUrl,
 } from '../../../../source/wallet/utxoSignedBinding.ts';
-import { availableUtxoReplacementKinds, prepareUtxoReplacement, utxoReplacementReads, type UtxoReplacementKind } from '../../../../source/wallet/utxoReplacement.ts';
+import { availableUtxoReplacementKinds, prepareUtxoReplacement, readUtxoReplacementFee, utxoReplacementReads, type UtxoReplacementKind } from '../../../../source/wallet/utxoReplacement.ts';
 import {
   observeRetainedUtxo,
   submitReviewedUtxo,
@@ -257,14 +257,18 @@ export function createNativeUtxoSend(
           const predecessor = await candidate(txid, check);
           if (!predecessor || predecessor.signedDigest !== before.signedDigest)
             throw new CustodyRuntimeError('NOT_READY');
-          const recommended = feeChoice.kind === 'custom' ? 1e-8 : await readPublicSyscoinFee(scope.network.url, read);
-          const rate = chooseUtxoFeeRate(recommended, feeChoice) ?? recommended;
+          const recommended = feeChoice.kind === 'custom'
+            ? 1e-8
+            : await readUtxoReplacementFee(scope.network.url, read);
+          const rate = recommended === undefined
+            ? undefined
+            : chooseUtxoFeeRate(recommended, feeChoice) ?? recommended;
           check();
           const binding = await prepareUtxoReplacement({
             scope,
             predecessor,
             kind: mode,
-            feeRateSatoshisPerVbyte: String(utxoFeeRateUnits(rate)),
+            feeRateSatoshisPerVbyte: rate === undefined ? undefined : String(utxoFeeRateUnits(rate)),
             isOwnedAddress: address => address === scope.account.address,
             ...utxoReplacementReads(scope, read),
             assertCurrent: check,

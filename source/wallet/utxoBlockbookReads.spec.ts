@@ -134,9 +134,11 @@ it('refuses a different response URL or an oversized response before JSON parsin
     fetch
   );
   const request = () => read.fetch(funding, { method: 'GET', signal });
-  await expect(request()).rejects.toThrow('does not match');
   await expect(request()).rejects.toMatchObject({
-    name: 'ResponseSizeLimitError',
+    code: 'UTXO_FUNDING_UNAVAILABLE',
+  });
+  await expect(request()).rejects.toMatchObject({
+    code: 'UTXO_FUNDING_UNAVAILABLE',
   });
 });
 
@@ -295,4 +297,26 @@ it('continues to charge distinct raw response bodies against the same operation 
     name: 'ResponseSizeLimitError',
   });
   expect(fetch).toHaveBeenCalledTimes(3);
+});
+
+it.each([
+  ['[]', 'UTXO_REVIEW_FUNDING_CHANGED'],
+  ['{}', 'UTXO_FUNDING_UNAVAILABLE'],
+  ['{', 'UTXO_FUNDING_UNAVAILABLE'],
+  ['[null]', 'UTXO_FUNDING_UNAVAILABLE'],
+])('classifies reviewed funding response %s as %s', async (body, code) => {
+  const backend = jest.fn(async (request: string) => reply(request, body));
+  const read = createOwnedUtxoBlockbookRead(
+    scope,
+    new AbortController().signal,
+    () => undefined,
+    backend
+  );
+  await expect(
+    read.assertReviewedInputsAvailable([`${'a'.repeat(64)}:0`])
+  ).rejects.toMatchObject({
+    code,
+    transactionNotBroadcast: true,
+  });
+  expect(backend).toHaveBeenCalledTimes(1);
 });

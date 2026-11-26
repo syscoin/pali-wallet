@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount } from '../../../../source/utils/syscoinAssetAmount';
-import { UTXO_REVIEW_FUNDING_CHANGED } from '../../../../source/shared/utxoSendErrors';
+import { UTXO_FUNDING_UNAVAILABLE, UTXO_REVIEW_FUNDING_CHANGED } from '../../../../source/shared/utxoSendErrors';
 import { snapshotUtxoRbf } from '../../../../source/shared/utxoTransactionOptions';
 
 import { formatBaseUnits } from '../core/amounts';
@@ -80,13 +80,14 @@ function describe(error: unknown): string {
   const code = error instanceof Error ? error.message : '';
   if (code === 'INVALID_CREDENTIAL') return t('mobile.accounts.invalidCredential');
   if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return t('mobile.accounts.invalidCredential');
+  if (code === UTXO_FUNDING_UNAVAILABLE) return t('send.utxoFundingUnavailable');
+  if (code === UTXO_REVIEW_FUNDING_CHANGED) return t('send.utxoReviewedInputsChanged');
   if (code === 'AUTH_THROTTLED') return t('mobile.sendAssetViews.utxo.tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesThen');
   if (code === 'INVALID_INPUT')
     return t('mobile.sendAssetViews.utxo.enterAValidAddressAndAmountForThisNetwork');
   if (
     code === 'CANCELLED' ||
-    code === 'NOT_READY' ||
-    code === UTXO_REVIEW_FUNDING_CHANGED
+    code === 'NOT_READY'
   )
     return t('mobile.sendAssetViews.utxo.thisReviewIsNoLongerAvailableOpenANewReview');
   if (code === 'UTXO_OPTIONS_CHANGED') return t('mobile.sendAssetViews.utxo.transactionOptionsChangedReviewANewQuote');

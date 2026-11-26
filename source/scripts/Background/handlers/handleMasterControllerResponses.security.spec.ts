@@ -254,10 +254,14 @@ describe('controller action sender authorization', () => {
     });
   });
 
-  it.each([true, false])(
-    'forwards the UTXO funding-change code only before broadcast (%s)',
-    async (transactionNotBroadcast) => {
-      const code = 'UTXO_REVIEW_FUNDING_CHANGED';
+  it.each([
+    ['UTXO_REVIEW_FUNDING_CHANGED', true],
+    ['UTXO_REVIEW_FUNDING_CHANGED', false],
+    ['UTXO_FUNDING_UNAVAILABLE', true],
+    ['UTXO_FUNDING_UNAVAILABLE', false],
+  ])(
+    'forwards the UTXO funding code %s only before broadcast (%s)',
+    async (code, transactionNotBroadcast) => {
       await rejectControllerAction(
         Object.assign(new Error(code), { code, transactionNotBroadcast })
       );

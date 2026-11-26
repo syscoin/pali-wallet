@@ -685,6 +685,32 @@ describe('PSBT approval context', () => {
     expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(2);
   });
 
+  it('signs and posts once when the fresh funding read recovers', async () => {
+    const quote = await wallet.getEstimateSysTransactionFee({ amount: '1' });
+    const fetch = jest.mocked(globalThis.fetch);
+    const backend = fetch.getMockImplementation()!;
+    const fundingReads: unknown[] = [];
+    fetch.mockImplementation((url, init) => {
+      if (String(url).includes('/api/v2/utxo/')) {
+        fundingReads.push(url);
+        if (fundingReads.length === 1)
+          return Promise.reject(new TypeError('Failed to fetch'));
+      }
+      return backend(url, init);
+    });
+    await expect(
+      wallet.signSendAndSaveTransaction({
+        psbt: quote.psbt,
+        ordinaryWalletSend: true,
+        utxoFeeReview: quote.utxoFeeReview,
+      })
+    ).resolves.toEqual({ txid: defaultTxid });
+    expect(fundingReads).toHaveLength(2);
+    expect(fundingReads[0]).toBe(fundingReads[1]);
+    expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
+    expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['missing', 'unavailable'])(
     'retires a reviewed wallet send if its funding is %s before signing',
     async (condition) => {
@@ -695,7 +721,10 @@ describe('PSBT approval context', () => {
       fetch.mockImplementation((url, init) => {
         if (!String(url).includes('/api/v2/utxo/')) return backend(url, init);
         if (condition === 'missing') return Promise.resolve(jsonFrom(url, []));
-        const response = new Response('Unavailable', { status: 503 });
+        const response = new Response('Unavailable', {
+          status: 503,
+          headers: { 'Retry-After': '30' },
+        });
         Object.defineProperty(response, 'url', { value: String(url) });
         return Promise.resolve(response);
       });
@@ -707,7 +736,10 @@ describe('PSBT approval context', () => {
           utxoFeeReview: quote.utxoFeeReview,
         })
       ).rejects.toMatchObject({
-        code: 'UTXO_REVIEW_FUNDING_CHANGED',
+        code:
+          condition === 'missing'
+            ? 'UTXO_REVIEW_FUNDING_CHANGED'
+            : 'UTXO_FUNDING_UNAVAILABLE',
         transactionNotBroadcast: true,
       });
       expect(

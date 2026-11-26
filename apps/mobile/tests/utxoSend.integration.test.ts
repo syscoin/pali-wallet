@@ -189,6 +189,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     let quoteFreeFunding = false;
     let identityFunding = false;
     let quoteReplacementFunding = false;
+    let feeEstimate = '0.00001024';
     let fundingSpentElsewhere = false;
     let reportedConfirmations = 1;
     let reportBlockHash = true;
@@ -223,7 +224,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       }
       if (path === '/api/v2/block-index/0') return reply(url, { blockHash: identityMismatch === 'genesis' ? 'c'.repeat(64) : network.genesisHash });
       if (path === '/api/v2/estimatefee/1')
-        return reply(url, { result: '0.00001024' });
+        return reply(url, { result: feeEstimate });
       if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`)
         return reply(url, { tokens: [] });
       if (path === `/api/v2/utxo/${account.xpub}`) {
@@ -753,7 +754,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       } finally { sign.mock.restore(); identityMismatch = undefined; changeIdentityOnStorage = false; identityFunding = false; calls.length = 0; }
     }
     if (network.id === 'bitcoin' && type === 'HDAccount') {
-      await t.test('pending Bitcoin sends can be reviewed and signed for Speed Up and Cancel', async () => {
+      await t.test('pending Bitcoin sends can be reviewed and signed for Speed Up and Cancel without a fee estimate', async (replacementTest) => {
         quoteReplacementFunding = true;
         reportedConfirmations = 0;
         const credential = { method: 'device' as const };
@@ -763,6 +764,8 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
         assert.equal(bitcoin.Transaction.fromHex(published!).version, 2);
         assert.deepEqual(await send.availableReplacements(originalId, assertCurrent), ['speed-up', 'cancel']);
         const speedUp = { txid: originalId, mode: 'speed-up' as const };
+        feeEstimate = '0';
+        replacementTest.after(() => { feeEstimate = '0.00001024'; });
         const initialReview = await send.prepareReplacement(speedUp, fee);
         assert.deepEqual(initialReview.outputs[0], original.outputs[0]);
         assert(BigInt(initialReview.feeSatoshis) > BigInt(original.feeSatoshis));
