@@ -2261,6 +2261,41 @@ function retireSmartSendAtPayerQuote(f: Awaited<ReturnType<typeof fixture>>, ope
   return inspectSmartSendAtPayerQuote(f, operation, () => operation.cancel());
 }
 
+test('interrupted standalone registration cannot be cancelled and can be retried after clearing Activity', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Registration retry' });
+    f.fundedSmart();
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined, null);
+    await operation.prepare();
+    const hash = operation.getSnapshot().userOperationHash!;
+    await retireSmartSendAtPayerQuote(f, operation);
+    assert.equal(f.signatures.length, 1);
+    assert.equal(f.submitted.length, 0);
+    await operation.dispose();
+    const saved = () => f.runtime.listSmartAccountAuthorizations({ maximum: 20 }, new AbortController().signal, () => undefined);
+    assert.equal((await saved()).entries[0]?.operationHash, hash);
+    const reads = f.credentialReads;
+    operation = await f.runtime.openSmartAccountCancellation({ originalHash: hash }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(operation.getSnapshot().error, 'SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED');
+    assert.equal(f.credentialReads, reads);
+    assert.equal(f.signatures.length, 1);
+    assert.equal(f.payerSignatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+    await operation.dispose();
+    await f.runtime.resetActivity(() => undefined, () => undefined);
+    assert.equal((await saved()).entries.length, 0);
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined, null);
+    await operation.prepare();
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
 for(const path of ['standalone','pending-outer','consumed-outer','pending-counterfactual'] as const)test(`native Smart cancellation revokes the same inner nonce using ${path} delivery`,async()=>{
  const f=await fixture({},true);let original:NativeSmartAccountOperation|undefined,cancel:NativeSmartAccountOperation|undefined;
  const complete=async(operation:NativeSmartAccountOperation,confirm:boolean)=>{

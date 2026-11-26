@@ -1129,6 +1129,7 @@
     },
     "retrySmartAccountCancellation": "Tentar cancelar novamente",
     "smartAccountCancelUnavailable": "Não é possível cancelar esta operação. Sua instrução assinada ainda pode ser executada.",
+    "smartRegistrationCancelUnavailable": "O cancelamento implantaria esta conta inteligente. Se o registro nunca foi enviado, limpe a atividade e os dados de nonce da conta para tentar novamente.",
     "smartAccountCancelDescription": "Cancele esta instrução da Smart Account enviando uma operação vazia com o mesmo nonce. A original pode ser confirmada primeiro. O cancelamento só é concluído quando a rede confirma a substituição.",
     "smartAccountCancelReviewDescription": "A operação original pode ser confirmada primeiro. O cancelamento é concluído quando a rede confirma a substituição.",
     "smartAccountCancelSigned": "Não foi possível confirmar o envio. O cancelamento foi assinado e ainda pode ser executado.",

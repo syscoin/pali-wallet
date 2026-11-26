@@ -1129,6 +1129,7 @@
     },
     "retrySmartAccountCancellation": "重试取消",
     "smartAccountCancelUnavailable": "此操作无法取消。其已签署的指令仍可能执行。",
+    "smartRegistrationCancelUnavailable": "取消操作会部署此智能账户。如果注册从未提交，请清除此账户的活动和 nonce 数据后重试。",
     "smartAccountCancelDescription": "通过提交具有相同 nonce 的空操作来取消此智能账户指令。原始操作可能先得到确认。只有网络确认替换操作后，取消才算完成。",
     "smartAccountCancelReviewDescription": "原始操作可能先得到确认。网络确认替换操作后，取消才算完成。",
     "smartAccountCancelSigned": "未能确认提交。取消操作已签署，仍可能执行。",

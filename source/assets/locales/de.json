@@ -1129,6 +1129,7 @@
     },
     "retrySmartAccountCancellation": "Stornierung erneut versuchen",
     "smartAccountCancelUnavailable": "Diese Operation kann nicht abgebrochen werden. Ihre signierte Anweisung kann weiterhin ausgeführt werden.",
+    "smartRegistrationCancelUnavailable": "Ein Abbruch würde diesen Smart Account bereitstellen. Falls die Registrierung nie übermittelt wurde, lösche die Aktivitäts- und Nonce-Daten des Kontos und versuche es erneut.",
     "smartAccountCancelDescription": "Brechen Sie diese Smart-Account-Anweisung mit einer leeren Operation mit derselben Nonce ab. Die ursprüngliche Operation kann zuerst bestätigt werden. Der Abbruch ist erst abgeschlossen, wenn das Netzwerk die Ersatzoperation bestätigt.",
     "smartAccountCancelReviewDescription": "Die ursprüngliche Operation kann zuerst bestätigt werden. Der Abbruch ist abgeschlossen, sobald das Netzwerk die Ersatzoperation bestätigt.",
     "smartAccountCancelSigned": "Die Übermittlung konnte nicht bestätigt werden. Der Abbruch wurde signiert und kann weiterhin ausgeführt werden.",

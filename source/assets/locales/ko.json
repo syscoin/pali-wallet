@@ -1129,6 +1129,7 @@
     },
     "retrySmartAccountCancellation": "취소 다시 시도",
     "smartAccountCancelUnavailable": "이 작업은 취소할 수 없습니다. 서명된 지시는 여전히 실행될 수 있습니다.",
+    "smartRegistrationCancelUnavailable": "취소하면 이 스마트 계정이 배포됩니다. 등록을 전송하지 않았다면 이 계정의 활동 및 논스 데이터를 지운 후 다시 시도하세요.",
     "smartAccountCancelDescription": "동일한 nonce로 빈 작업을 전송하여 이 스마트 계정 지시를 취소합니다. 원래 작업이 먼저 확정될 수 있습니다. 네트워크가 대체 작업을 확정해야 취소가 완료됩니다.",
     "smartAccountCancelReviewDescription": "원래 작업이 먼저 확정될 수 있습니다. 네트워크가 대체 작업을 확정하면 취소가 완료됩니다.",
     "smartAccountCancelSigned": "제출 여부를 확인할 수 없습니다. 취소가 서명되었으며 여전히 실행될 수 있습니다.",

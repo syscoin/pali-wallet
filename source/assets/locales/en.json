@@ -1129,6 +1129,7 @@
     },
     "retrySmartAccountCancellation": "Retry cancellation",
     "smartAccountCancelUnavailable": "This operation could not be cancelled. Its signed instruction may still execute.",
+    "smartRegistrationCancelUnavailable": "Cancelling would deploy this Smart Account. If registration was never submitted, clear its activity and nonce data to retry.",
     "smartAccountCancelDescription": "Cancel this Smart Account instruction by submitting an empty operation with the same nonce. The original may confirm first. Cancellation completes only when the network confirms the replacement.",
     "smartAccountCancelReviewDescription": "The original operation may confirm first. Cancellation is complete when the network confirms the replacement.",
     "smartAccountCancelSigned": "Submission could not be confirmed. The cancellation was signed and may still execute.",

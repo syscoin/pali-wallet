@@ -2,7 +2,7 @@ import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import type { AssetTransferCall } from '../../../../source/shared/assetTransfer';
 import { resolveAssetTransferDisplay, type AssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
-import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../../../source/shared/smartAccountFeeQuote.ts';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED, SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED } from '../../../../source/shared/smartAccountFeeQuote.ts';
 import { useOwnedLedgerConnection } from './useDappLedgerConnection';
 import {
   formatTokenUnits,
@@ -955,6 +955,8 @@ export function NativeSmartAccountOperationContent({
                 : t('mobile.recoveryStatusViews.operation.checkDeploymentStatus')
             }
             body={insufficientAsset ? t('mobile.sendAssetViews.evm.notEnoughTokensForThisTransfer')
+              : state.error === SMART_ACCOUNT_REGISTRATION_CANNOT_BE_CANCELLED
+              ? t('transactions.smartRegistrationCancelUnavailable')
               : state.payerQuoteUnavailable
               ? state.transactionHash
                 ? t('mobile.recoveryStatusViews.operation.fundedOperationQuoteUnavailable')
