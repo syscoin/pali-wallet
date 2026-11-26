@@ -664,7 +664,17 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           operationReceipt,
         };
         mark('prefund:complete');
-        await wallet.gotoRoute('#/home');
+        await wallet.ensureOnHome();
+        if (!process.env.PALI_RPC_REFERENCE) {
+          // Reloading or switching accounts refreshes history and can hide a
+          // registration that remained pending after the wallet got its receipt.
+          await page.getByText('Activity', { exact: true }).click();
+          await expect(
+            page
+              .locator(`[data-transaction-hash="${operation.hash}"]`)
+              .getByText('Confirmed', { exact: true })
+          ).toBeVisible({ timeout: 15000 });
+        }
       }
       await localRpc(chain.url, 'anvil_setBalance', [
         account,
@@ -680,7 +690,6 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       await page.locator('[id^="account-SmartAccount"]').first().click();
       await expect(page.locator('#home-balance')).toHaveText('1');
       if (prefund) {
-        // Registration and the account switch both refresh Home before Send opens.
         const registration = page.locator(
           `[data-transaction-hash="${output.prefund.operation.hash}"]`
         );

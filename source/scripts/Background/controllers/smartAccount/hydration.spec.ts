@@ -686,6 +686,61 @@ describe('SmartAccountController smart account execution fees', () => {
     expect(error).not.toHaveProperty('transactionNotBroadcast');
   });
 
+  it.each(['confirmed', 'wait rejected', 'reconcile rejected', 'no wait'])(
+    'reconciles the submitted handleOps hash after the receipt wait (%s)',
+    async (outcome) => {
+      const { controller, broadcast } = buildController();
+      const hash = '0x' + 'ab'.repeat(32);
+      const started = createDeferred();
+      const release = createDeferred();
+      const wait = jest.fn(async () => {
+        started.resolve(undefined);
+        await release.promise;
+        if (outcome === 'wait rejected') throw new Error('Receipt wait failed');
+        return { status: 1, transactionHash: hash };
+      });
+      const reconcile = jest.fn(async () => {
+        if (outcome === 'reconcile rejected')
+          throw new Error('RPC unavailable');
+      });
+      controller.deps.reconcileMinedTransaction = reconcile;
+      broadcast.mockResolvedValueOnce({ hash, wait });
+
+      const submitted = submitReviewed(controller, {
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+        userOperation: buildUserOperation(),
+        waitForConfirmation: outcome !== 'no wait',
+      });
+      if (outcome === 'no wait') {
+        await expect(submitted).resolves.toMatchObject({ hash });
+        expect(wait).not.toHaveBeenCalled();
+        expect(reconcile).not.toHaveBeenCalled();
+        return;
+      }
+      await Promise.race([started.promise, submitted]);
+      expect(wait).toHaveBeenCalledTimes(1);
+      expect(reconcile).not.toHaveBeenCalled();
+      release.resolve(undefined);
+      if (outcome === 'wait rejected') {
+        await expect(submitted).rejects.toMatchObject({
+          message: 'Receipt wait failed',
+          transactionHash: hash,
+          transactionNotBroadcast: false,
+        });
+      } else {
+        await expect(submitted).resolves.toMatchObject({ hash });
+      }
+      expect(reconcile).toHaveBeenCalledTimes(1);
+      expect(reconcile).toHaveBeenCalledWith(
+        hash,
+        CHAIN_ID,
+        expect.any(Function)
+      );
+    }
+  );
+
   it('does not add EIP-1559 outer fees when legacy preparation has no priority fee', async () => {
     const { controller, sendAndSaveEthTransaction } = buildController();
 

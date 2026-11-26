@@ -1272,6 +1272,17 @@ class MainController {
     this.balancesManager = BalancesManager();
     this.cancellablePromises = new CancellablePromises();
     this.smartAccount = new SmartAccountController({
+      reconcileMinedTransaction: async (hash, chainId, assertCurrent) => {
+        assertCurrent();
+        const transaction = await this.getEvmTransactionFromProvider(hash);
+        assertCurrent();
+        if (transaction && isTransactionInBlock(transaction))
+          await this.updateTrackedEvmTransactionCopies(
+            hash,
+            chainId,
+            transaction
+          );
+      },
       captureReadLifetime: (assertCurrent) =>
         this.captureSmartOwnerLifetime(
           assertCurrent,

@@ -45,7 +45,11 @@ import {
   hasNativeGasFailure,
   hasSmartAccountSignatureFailure,
 } from './operationErrors.ts';
-import { createSmartAccountGasTankFunding } from './payerPolicy.ts';
+import {
+  createSmartAccountGasTankFunding,
+  type SmartAccountPrefundOptions,
+  waitForSmartAccountTransaction,
+} from './payerPolicy.ts';
 import type { SmartAccountPendingState } from './pendingState.ts';
 import {
   getExplicitSmartAccountGasPrice,
@@ -53,10 +57,7 @@ import {
 } from './prepareOperation.ts';
 import { getSmartAccountUserOpHash } from './userOperationHash.ts';
 import type { EvmAutoNonceSnapshot } from '../../shared/evmAutoNonce.ts';
-import type {
-  SmartAccountFeeOverrides,
-  SmartAccountPayerBudget,
-} from '../../shared/smartAccountFeeQuote';
+import type { SmartAccountPayerBudget } from '../../shared/smartAccountFeeQuote';
 import type {
   IKeyringAccountState,
   ISmartAccountMetadata,
@@ -122,13 +123,7 @@ export type SmartAccountSubmitHost<
     entryPoint: string,
     payer: SmartAccountGasPayer,
     chainId: number,
-    options: SmartAccountSubmissionChecks & {
-      assertBeforeSign: () => void;
-      assertCurrentContext(): void;
-      onAcknowledged(): void;
-      onSubmissionAttempt(): void;
-      reviewedPayerFees?: SmartAccountFeeOverrides & { gasLimit?: string };
-    }
+    options: SmartAccountPrefundOptions
   ): Promise<void>;
   getExecutionContext(id: string):
     | {
@@ -154,6 +149,7 @@ export type SmartAccountSubmitHost<
   invalidateMetadata(address: string): void;
   pending: SmartAccountPendingState;
   provider: any;
+  reconcileMinedTransaction?(hash: string): Promise<void>;
   retainAuthorization(
     operation: SmartAccountPackedUserOperation,
     payer: SmartAccountGasPayer,
@@ -528,6 +524,7 @@ async function submitOwnedSmartAccountOperation<
             : {}),
           assertBeforeSign: assertCurrent,
           assertCurrentContext: assertContext,
+          reconcileMinedTransaction: host.reconcileMinedTransaction,
           onSubmissionAttempt() {
             financialSubmissionAttempted = true;
           },
@@ -639,7 +636,10 @@ async function submitOwnedSmartAccountOperation<
     // validator; drop the cached hydrated metadata for this account.
     host.invalidateMetadata(active.account.address);
     if (params.waitForConfirmation) {
-      await response.wait();
+      await waitForSmartAccountTransaction(
+        response,
+        host.reconcileMinedTransaction
+      );
     }
     return response;
   } catch (caught) {

@@ -182,6 +182,7 @@ import {
   readSmartAccountNativeBalances,
   canUseSmartAccountGasTank,
   ensureSmartAccountDeploymentPrefund,
+  type SmartAccountPrefundOptions,
 } from 'utils/smartAccount/payerPolicy';
 import {
   createSmartAccountPendingState,
@@ -197,7 +198,6 @@ import {
 import { signSmartAccountEcdsaOperation } from 'utils/smartAccount/signOperation';
 import {
   submitSmartAccountOperation,
-  type SmartAccountSubmissionChecks,
   type SmartAccountSubmitParams,
 } from 'utils/smartAccount/submitOperation';
 import { assertSmartAccountTargetsAllowed } from 'utils/smartAccount/targetPolicy';
@@ -244,6 +244,11 @@ export interface ISmartAccountControllerDependencies {
   getWalletSessionGeneration?: () => number;
   getWalletStateGeneration: () => number;
   readSettingsEvmFeeNonce(id: string, contractId: string): number;
+  reconcileMinedTransaction(
+    hash: string,
+    chainId: number,
+    assertCurrent: () => void
+  ): Promise<void>;
   retainSmartAccountAuthorization(
     input: Parameters<EvmSignedRecords['retainSmartAccountAuthorization']>[1],
     assertCurrent: () => void
@@ -2707,6 +2712,10 @@ class SmartAccountController {
           ),
         invalidateMetadata: (address) =>
           this.invalidateHydratedMetadata(address),
+        reconcileMinedTransaction: async (hash) =>
+          this.deps.reconcileMinedTransaction(hash, captured.chainId, () =>
+            this.assertInfrastructureContext(captured)
+          ),
       },
       assertCurrent
     );
@@ -2737,12 +2746,7 @@ class SmartAccountController {
     entryPointAddress: string,
     gasPayer: { address: string; id: number; type: PaliKeyringAccountType },
     chainId: number,
-    options: SmartAccountSubmissionChecks & {
-      assertBeforeSign: () => void;
-      assertCurrentContext: () => void;
-      onAcknowledged: () => void;
-      onSubmissionAttempt: () => void;
-    },
+    options: SmartAccountPrefundOptions,
     provider: any,
     confirmFee?: SmartAccountControllerAuthority['confirmFee']
   ): Promise<void> {
