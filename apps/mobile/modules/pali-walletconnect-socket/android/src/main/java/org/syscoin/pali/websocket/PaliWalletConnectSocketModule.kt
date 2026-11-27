@@ -84,7 +84,7 @@ class PaliWalletConnectSocketModule : Module() {
             else emit(id, "binary", mapOf("data" to bytes.base64()))
           }
           override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            if (socketRegistry.readable(connection, webSocket)) socketRegistry.close(id, code, reason)
+            socketRegistry.replyToPeerClose(connection, webSocket, code, reason)
           }
           override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             if (socketRegistry.finish(connection, webSocket)) emit(id, "close", mapOf("code" to code, "reason" to reason))
