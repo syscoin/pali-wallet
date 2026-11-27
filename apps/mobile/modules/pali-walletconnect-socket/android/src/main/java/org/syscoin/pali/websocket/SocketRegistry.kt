@@ -68,6 +68,15 @@ internal class SocketRegistry(private val limit: Int = 8) {
     if (action.second) socket.close(code, reason) else socket.cancel()
   }
 
+  fun replyToPeerClose(connection: Connection, socket: WebSocket, code: Int, reason: String) {
+    synchronized(this) {
+      if (!readable(connection, socket)) return
+      connection.closing = true
+    }
+    // OkHttp reports 1005 for an empty peer Close. It cannot send that sentinel.
+    socket.close(if (code == 1005) 1000 else code, reason)
+  }
+
   @Synchronized fun finish(connection: Connection, socket: WebSocket?): Boolean {
     if (connections[connection.id] !== connection || connection.finished ||
       (connection.socket != null && socket != null && connection.socket !== socket)) return false

@@ -12,11 +12,16 @@ class SocketRegistryTest {
   private class Socket : WebSocket {
     var cancellations = 0
     var closes = 0
+    var closeFrame: Pair<Int, String?>? = null
     override fun request() = Request.Builder().url("https://localhost/").build()
     override fun queueSize() = 0L
     override fun send(text: String) = true
     override fun send(bytes: ByteString) = true
-    override fun close(code: Int, reason: String?): Boolean { closes++; return true }
+    override fun close(code: Int, reason: String?): Boolean {
+      closes++
+      closeFrame = code to reason
+      return true
+    }
     override fun cancel() { cancellations++ }
   }
 
@@ -71,6 +76,39 @@ class SocketRegistryTest {
     assertNull(registry.openSocket("one"))
     assertTrue(registry.finish(connection, socket))
     assertFalse(registry.finish(connection, socket))
+  }
+
+  @Test fun emptyPeerCloseUsesSendableReplyAndKeepsOwnershipUntilTerminal() {
+    val registry = SocketRegistry(1)
+    val connection = registry.create("one")
+    val socket = Socket()
+    assertTrue(registry.opened(connection, socket))
+
+    registry.replyToPeerClose(connection, socket, 1005, "")
+    registry.replyToPeerClose(connection, socket, 1005, "")
+    assertEquals(1000 to "", socket.closeFrame)
+    assertEquals(1, socket.closes)
+    assertNull(registry.openSocket("one"))
+    try { registry.create("two"); fail("Peer reply released capacity") } catch (_: IllegalStateException) {}
+    assertTrue(registry.finish(connection, socket))
+  }
+
+  @Test fun peerCloseKeepsValidCodeAndReasonAndCannotCloseReplacement() {
+    val registry = SocketRegistry()
+    val old = registry.create("one")
+    val oldSocket = Socket()
+    assertTrue(registry.opened(old, oldSocket))
+    registry.replyToPeerClose(old, oldSocket, 4001, "peer reason")
+    assertEquals(4001 to "peer reason", oldSocket.closeFrame)
+    assertTrue(registry.finish(old, oldSocket))
+
+    val current = registry.create("one")
+    val socket = Socket()
+    assertTrue(registry.opened(current, socket))
+    registry.replyToPeerClose(old, oldSocket, 1005, "")
+    assertEquals(1, oldSocket.closes)
+    assertEquals(0, socket.closes)
+    assertSame(socket, registry.openSocket("one"))
   }
 
   @Test fun failureBeforeHandleReturnCannotReinsertOldConnection() {

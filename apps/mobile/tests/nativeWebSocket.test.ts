@@ -82,6 +82,22 @@ test('connecting close requests native cancellation and ignores late open', () =
   assert.equal(closed, 1);
 });
 
+test('an empty peer close preserves terminal metadata without sending code 1005', () => {
+  const f = fixture();
+  const socket = new f.Socket('wss://relay.example/');
+  f.event('open');
+  const received: [number, string, boolean][] = [];
+  socket.onclose = (event) => {
+    received.push([event.code, event.reason, event.wasClean]);
+  };
+  assert.throws(() => socket.close(1005));
+  f.event('close', { code: 1005, reason: '' });
+  f.event('close', { code: 1000, reason: '' });
+  assert.deepEqual(received, [[1005, '', true]]);
+  assert.equal(socket.readyState, socket.CLOSED);
+  assert.equal(f.calls.some(([type]) => type === 'close'), false);
+});
+
 test('text, captured binary and Blob sends retain FIFO before normal close', async () => {
   const f = fixture(),
     socket = new f.Socket('wss://relay.example/');
