@@ -9,7 +9,8 @@ const { composeQualificationSdkIdentity, assertQualificationSdkIdentity, QUALIFI
 const { readQualificationSdkPin, verifyInstalledQualificationSdk } = require('../scripts/qualification-sdk.cjs');
 
 const version = '2.1.14';
-const quick = `quickcrypto.1.1.9.source.${'a'.repeat(40)}.sha256.${'b'.repeat(64)}`;
+const quickVersion = '1.1.10';
+const quick = `quickcrypto.${quickVersion}`;
 
 test('qualification identity binds the exact official package and any native candidate', () => {
   assert.equal(composeQualificationSdkIdentity(version), version);
@@ -47,6 +48,42 @@ test('published SDK qualification binds the exact installed package without a ru
     fs.writeFileSync(metadata, JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: '2.1.13' }));
     assert.throws(() => verifyInstalledQualificationSdk(root, pin), /exact manifest version/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('mobile qualification requires the exact published QuickCrypto pin and installed package', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-published-quickcrypto-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const keyring = '@sidhujag/sysweb3-keyring';
+  const quickCrypto = 'react-native-quick-crypto';
+  for (const name of [keyring, quickCrypto])
+    fs.mkdirSync(path.join(root, 'node_modules', name), { recursive: true });
+  const write = (file, value) => fs.writeFileSync(path.join(root, file), JSON.stringify(value));
+  const writePin = quickPin => write('package.json', {
+    name: '@pali/mobile', dependencies: { [keyring]: version, [quickCrypto]: quickPin },
+  });
+  const quickMetadata = path.join('node_modules', quickCrypto, 'package.json');
+  write(path.join('node_modules', keyring, 'package.json'), { name: keyring, version });
+  for (const invalid of [undefined, '^1.1.10', 'latest', 'file:quickcrypto.tgz']) {
+    writePin(invalid);
+    assert.throws(() => readQualificationSdkPin(root), /exact QuickCrypto pin/);
+  }
+
+  writePin(quickVersion);
+  const pin = readQualificationSdkPin(root);
+  assert.deepEqual(pin, { version, identity: `${version}.${quick}`, quickCryptoIdentity: quick });
+  for (const metadata of [
+    { name: quickCrypto, version: '1.1.9' },
+    { name: 'a-different-quickcrypto', version: quickVersion },
+  ]) {
+    write(quickMetadata, metadata);
+    assert.throws(() => verifyInstalledQualificationSdk(root, pin), /Installed QuickCrypto must match/);
+  }
+  write(quickMetadata, { name: quickCrypto, version: quickVersion });
+  assert.doesNotThrow(() => verifyInstalledQualificationSdk(root, pin));
+
+  writePin('1.1.11');
+  write(quickMetadata, { name: quickCrypto, version: '1.1.11' });
+  assert.throws(() => verifyInstalledQualificationSdk(root, pin), /SDK identity mismatch/);
 });
 
 test('native qualification validates the generated candidate identity and names identity failures separately', () => {

@@ -8,11 +8,10 @@ const { Buffer } = require('node:buffer');
 const { createHash } = require('node:crypto');
 const { deflateRawSync } = require('node:zlib');
 
-// Test the real install scripts with a tiny bounded artifact. Their separate
+// Test the WalletConnect install script with a tiny bounded artifact. Its
 // manifest tests continue to verify the production versions and payload hashes.
 const scripts = [
   { file: 'apply-walletconnect-terminal.cjs', manifest: './walletconnect-terminal.json', apply: 'applyWalletConnectTerminalPatch', suffix: 'terminal' },
-  { file: 'apply-quickcrypto-sentry.cjs', manifest: './quickcrypto-sentry.json', apply: 'applyQuickCryptoSentryPatch', suffix: 'quickcrypto' },
 ];
 const digest = value => createHash('sha256').update(value).digest('hex');
 function fixture(script, renameFailure = false) {
