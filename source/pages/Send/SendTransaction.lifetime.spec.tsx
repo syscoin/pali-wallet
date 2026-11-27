@@ -1065,6 +1065,104 @@ it('requires a fresh quote and explicit confirmation after an initial EOA quote 
   expect(submitted[0][1][4].genericReviewId).toBe('lifetime-fee-1');
 });
 
+it.each([
+  ['DAPP_FEE_REVERTED', 'send.feeEstimateReverted', false],
+  ['DAPP_FEE_ESTIMATE_UNAVAILABLE', 'send.feeEstimateUnsupported', false],
+  ['DAPP_FEE_INSUFFICIENT_FUNDS', 'send.insufficientFundsForGas', true],
+])(
+  'retains Cancel and gates Retry for %s without allowing confirmation',
+  async (code, wording, retryable) => {
+    mockFee.mockRejectedValueOnce(
+      Object.assign(new Error('ignored raw RPC text'), { code })
+    );
+    render(<SendTransaction />);
+    await screen.findByText(wording as string);
+    expect(screen.queryByText('ignored raw RPC text')).toBeNull();
+    expect(
+      Boolean(screen.queryByRole('button', { name: 'receive.retry' }))
+    ).toBe(retryable);
+    expect(
+      screen.queryByRole('button', { name: 'buttons.confirm' })
+    ).toBeNull();
+    await act(async () => mockButtonHandlers['buttons.cancel']());
+    expect(mockClose).toHaveBeenCalledTimes(1);
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'sendAndSaveEthTransaction'
+      )
+    ).toBe(false);
+  }
+);
+
+it('keeps a validated request cancellable while Retry is waiting and discards its late quote', async () => {
+  const { from, to } = mockQuery.tx;
+  mockFee.mockRejectedValueOnce({
+    code: 'DAPP_FEE_UNAVAILABLE',
+    failedFeeRequest: { from, to, value: '1000000000000000000' },
+  });
+  const normalQuote = mockFee.getMockImplementation()!;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  mockFee.mockImplementationOnce(async (...args: any[]) => {
+    await gate;
+    return normalQuote(...args);
+  });
+  render(<SendTransaction />);
+  await screen.findByText('send.unableToCalculateFees');
+  const retry = screen.getByRole('button', {
+    name: 'receive.retry',
+  }) as HTMLButtonElement;
+  fireEvent.click(retry);
+  await waitFor(() => expect(mockFee).toHaveBeenCalledTimes(2));
+  expect(screen.getByText(to)).toBeTruthy();
+  expect(screen.getByText('1.0 ETH')).toBeTruthy();
+  expect(screen.getByText('send.calculating')).toBeTruthy();
+  expect(retry.disabled).toBe(true);
+  fireEvent.click(retry);
+  const cancel = screen.getByRole('button', {
+    name: 'buttons.cancel',
+  }) as HTMLButtonElement;
+  expect(cancel.disabled).toBe(false);
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+  fireEvent.click(cancel);
+  await waitFor(() => expect(mockClose).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    release();
+  });
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'discardNativeEvmFeeReview'
+    )
+  ).toBe(true);
+  expect(mockFee).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+});
+
+it('keeps canonical token transfer recipient and raw amount visible when estimation fails', async () => {
+  const recipient = '0x' + '77'.repeat(20);
+  const request = mockQuery.tx;
+  request.data = new Interface([
+    'function transfer(address,uint256)',
+  ]).encodeFunctionData('transfer', [recipient, 310000]);
+  mockFee.mockRejectedValueOnce({
+    code: 'DAPP_FEE_REVERTED',
+    failedFeeRequest: { from: request.from, to: request.to, value: '0' },
+  });
+  render(<SendTransaction />);
+  await screen.findByText('send.feeEstimateReverted');
+  expect(screen.getByText(recipient)).toBeTruthy();
+  expect(screen.getByText('310000')).toBeTruthy();
+  expect(screen.getByText('assetTransfer.rawUnits')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+});
+
 it('cancels the initial Smart Account review without signing or submitting', async () => {
   mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
   mockState.vault.accounts.HDAccount[0].smartAccount = {};

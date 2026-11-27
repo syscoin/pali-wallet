@@ -46,6 +46,10 @@ import { utils as syscoinTransactionTypes } from 'syscointx-js';
 
 import { getController, notificationManager } from '..';
 import { getBundledEvmChainMetadata } from '../../../shared/chainCatalogueData';
+import {
+  classifyDappGasEstimateError,
+  DappFeeReviewError,
+} from '../../../shared/dappFeeReviewError';
 import { normalizeDappTransaction } from '../../../shared/dappTransaction';
 import { assertSupportedEvmFees } from '../../../shared/dappTransaction.ts';
 import { readStoredDappPermissions } from '../../../shared/dappTypes';
@@ -12781,16 +12785,50 @@ class MainController {
       );
     };
     check();
-    return (
-      await this.prepareGenericEvmFeeReview(
-        params,
-        context,
-        walletNonce,
-        check,
-        { authorizeDapp, dappApprovalOwner: requestOwner },
-        { kind: 'dapp', request: requestOwner }
+    try {
+      return (
+        await this.prepareGenericEvmFeeReview(
+          params,
+          context,
+          walletNonce,
+          check,
+          { authorizeDapp, dappApprovalOwner: requestOwner },
+          { kind: 'dapp', request: requestOwner }
+        )
+      ).token;
+    } catch (error) {
+      check();
+      if (
+        !(error instanceof DappFeeReviewError) &&
+        !(error instanceof EvmFeeBalanceError) &&
+        (error?.transactionNotBroadcast === true ||
+          error?.message === EVM_TRANSACTION_CONTEXT_CHANGED)
       )
-    ).token;
+        throw error;
+      // This display-only summary carries no gas or signing authority.
+      const request = normalizeDappTransaction(params);
+      if (
+        request.from?.toLowerCase() !== context.account.address.toLowerCase() ||
+        (request.chainId !== undefined &&
+          Number(request.chainId) !== context.chainId)
+      )
+        throw error;
+      throw new DappFeeReviewError(
+        error instanceof DappFeeReviewError
+          ? error.code
+          : error instanceof EvmFeeBalanceError
+          ? 'DAPP_FEE_INSUFFICIENT_FUNDS'
+          : 'DAPP_FEE_FAILED',
+        {
+          from: request.from,
+          to:
+            request.to === undefined || request.to === null
+              ? null
+              : getAddress(request.to),
+          value: BigInt(request.value ?? 0).toString(),
+        }
+      );
+    }
   }
 
   public async reviewWalletEvmFee(
@@ -13186,8 +13224,19 @@ class MainController {
                 : { kind: 'estimate' },
             assertCurrent,
             now: () => Math.floor(performance.now()),
-            read: (method: string, values: readonly unknown[]) =>
-              provider.send(method, [...values]),
+            read: (method: string, values: readonly unknown[]) => {
+              const response = provider.send(method, [...values]);
+              if (
+                feeAuthority.kind !== 'dapp' ||
+                admission.kind !== 'review' ||
+                method !== 'eth_estimateGas'
+              )
+                return response;
+              return response.catch((error: unknown) => {
+                assertCurrent();
+                throw classifyDappGasEstimateError(error) ?? error;
+              });
+            },
             verifyChain: async () => {
               await provider.verifyConfiguredChainId(true);
               assertCurrent();

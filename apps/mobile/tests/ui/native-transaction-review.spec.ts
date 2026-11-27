@@ -3,6 +3,21 @@ import { expect, test } from '@playwright/test';
 const fixture = `${process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179'}/?transaction-review=1`;
 test.use({ hasTouch: true });
 
+test('failed transaction preparation keeps the recipient and leaves rejection available', async ({ page }) => {
+  await page.goto(`${fixture}&fee-unavailable=1&transfer-kind=erc20`);
+  await expect(page.getByText('0x4444444444444444444444444444444444444444', { exact: true })).toBeVisible();
+  await expect(page.getByText('123456789', { exact: true })).toBeVisible();
+  await expect(page.getByText('Fee unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByText('Calculating…', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
+  await page.screenshot({ path: test.info().outputPath('mobile-transaction-fee-unavailable.png') });
+  await page.getByText('Fee unavailable', { exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('mobile-transaction-fee-detail.png') });
+  await page.getByRole('button', { name: 'Reject', exact: true }).click();
+  expect(await page.evaluate(() => window.__nativeTransactionReviewFixture.calls()))
+    .toEqual([{ method: 'rejectRequest', args: ['transaction-1'] }]);
+});
+
 test('shows exact amounts and inspectable transaction details on a narrow screen', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto(`${fixture}&font-scale=1.6`);

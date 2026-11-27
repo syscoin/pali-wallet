@@ -1,4 +1,5 @@
 import { abortable } from '../../../../source/shared/boundedHttp.ts';
+import { EvmTransferReadError } from '../custody/evmFeeContracts.ts';
 import { isAccountCompatibleWithNetwork } from '../../../../source/utils/accountCompatibility.ts';
 import { NativeAccountChangeRequests } from './accountChangeRequests.ts';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope, type NativePrivateAuthentication } from '../custody/privateAuthentication.ts';
@@ -57,7 +58,7 @@ import {
 } from '../../../../source/shared/dappMessageAdvisories.ts';
 import { normalizeDappTransaction } from '../../../../source/shared/dappTransaction.ts';
 import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
-import { getEffectiveApprovalData } from '../../../../source/shared/approval.ts';
+import { getEffectiveApprovalData, summarizeApproval } from '../../../../source/shared/approval.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
 import { getTypedOrderReview } from '../../../../source/utils/typedOrderReview.ts';
 import { createDappSessions } from '../../../../source/wallet/dappSessions.ts';
@@ -2910,6 +2911,7 @@ export class NativeConnectionsController {
       message.prepared ||
       message.smart ||
       message.review.error ||
+      (message.review.kind === 'transaction' && message.review.retryPreparation) ||
       !isOperationRequest(message.request) ||
       this.disposed ||
       this.options.source.getSnapshot().phase !== 'ready' ||
@@ -3063,7 +3065,26 @@ export class NativeConnectionsController {
               handoff: message.handoff,
             },
             approval.assertCurrent, this.requestAuthentication(message)
-          );
+          ).catch((error: unknown) => {
+            approval.assertCurrent();
+            if (message.request.method !== 'eth_sendTransaction' || message.review.kind !== 'transaction') throw error;
+            const call = message.request.transaction;
+            const wasRetry = message.review.retryPreparation;
+            const retryPreparation = error instanceof EvmTransferReadError && error.code === 'UNAVAILABLE' &&
+              !message.dispatched && !message.broadcastHash && !message.submissionUncertain &&
+              this.host!.context().accounts.some(account => account.id === message.accountId && account.type !== 'SmartAccount');
+            message.review = Object.freeze({
+              ...message.review, transaction: null, maximumFeeUnits: null, maximumTotalUnits: null,
+              feeChoice: null, feeComparison: null, assetTransfer: null, retryPreparation,
+              insufficientBalance: error instanceof EvmTransferReadError && error.code === 'INSUFFICIENT_BALANCE',
+              error: retryPreparation ? null : 'TRANSACTION_UNAVAILABLE',
+              requestedCall: Object.freeze({ to: call.to ?? null, value: BigInt(call.value ?? 0).toString(), data: call.data }),
+              approval: call.to ? summarizeApproval(call.data, call.to) : null,
+            });
+            if (!retryPreparation && !wasRetry) throw error;
+            return null;
+          });
+    if (!prepared) return;
     try {
       approval.assertCurrent();
     } catch (error) {
@@ -3201,6 +3222,8 @@ export class NativeConnectionsController {
     message.review = Object.freeze({
       ...message.review,
       retryPreparation: false,
+      requestedCall: undefined,
+      insufficientBalance: undefined,
       transaction: prepared.transaction,
       feeComparison: prepared.feeComparison,
       feeChoice: null,

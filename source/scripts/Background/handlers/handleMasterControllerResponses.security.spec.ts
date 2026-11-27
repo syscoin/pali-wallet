@@ -1,3 +1,4 @@
+import { DappFeeReviewError } from '../../../shared/dappFeeReviewError';
 import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 
 import { SMART_ACCOUNT_CONTROLLER_PORT } from '../../../shared/smartAccountControllerAuthority';
@@ -1423,3 +1424,29 @@ it.each([undefined, 7])(
     }
   }
 );
+
+it('relays bounded failed-fee details from the wallet error class only', () => {
+  const failedFeeRequest = {
+    from: `0x${'11'.repeat(20)}`,
+    to: `0x${'22'.repeat(20)}`,
+    value: '1000000',
+  };
+  expect(
+    controllerErrorResponse(
+      new DappFeeReviewError('DAPP_FEE_FAILED', failedFeeRequest)
+    ).error
+  ).toEqual({
+    code: 'DAPP_FEE_FAILED',
+    failedFeeRequest,
+    message: 'DAPP_FEE_FAILED',
+    transactionNotBroadcast: true,
+  });
+  expect(
+    controllerErrorResponse({
+      code: 'DAPP_FEE_FAILED',
+      failedFeeRequest,
+      message: 'Untrusted error',
+      transactionNotBroadcast: true,
+    }).error
+  ).toEqual({ message: 'Untrusted error', transactionNotBroadcast: true });
+});

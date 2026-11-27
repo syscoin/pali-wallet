@@ -86,6 +86,8 @@ export type NativeTransactionReview = NativeSigningReviewBase &
     feeComparison: EvmDappFeeComparison | null;
     feeChoice: EvmDappFeeChoice | null;
     method: 'eth_sendTransaction' | 'wallet_sendCalls' | SmartAccountModuleRequestMethod;
+    requestedCall?: Readonly<Pick<PreparedEvmTransaction, 'to' | 'value' | 'data'>>;
+    insufficientBalance?: boolean;
     transaction: PreparedEvmTransaction | null;
     maximumFeeUnits: string | null;
     maximumTotalUnits: string | null;
