@@ -18,7 +18,7 @@
     "test:faucet-ui": "playwright test --config playwright.faucet.config.ts",
     "test:recovery-ui": "node scripts/build-native-recovery-ui.cjs && playwright test --config playwright.recovery.config.ts",
     "lint": "eslint . --max-warnings 0",
-    "postinstall": "node ../../scripts/apply-walletconnect-terminal.cjs && node ../../scripts/apply-quickcrypto-sentry.cjs"
+    "postinstall": "node ../../scripts/apply-walletconnect-terminal.cjs"
   },
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",
@@ -66,7 +66,7 @@
     "react-native-nitro-modules": "0.37.2",
     "react-native-qrcode-svg": "6.3.50",
     "react-native-quick-base64": "3.0.1",
-    "react-native-quick-crypto": "1.1.9",
+    "react-native-quick-crypto": "1.1.10",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-svg": "15.16.0",
     "react-native-web": "^0.21.4",
@@ -125,6 +125,5 @@
       "nativeModulesDir": "./modules"
     }
   },
-  "paliWalletConnectPatch": "core.9a6890ed312e22696246d1c971674816158bc289.utils.7e48b0453db3f3c7f2d417ef3823fc5c218f21bf.sha256.ece6c1ece8c745c257bccfda9ce02effaba097b9b5b240405a8913d3bfe1f16a",
-  "paliQuickCryptoSentryPatch": "quickcrypto.1.1.9.source.273ae4f76166b0954737fa1f0cf4e486f7956d83.sha256.59cadd6464baae28e9c8ea6bff3cc49d1b72d0c5cf3c131f2a5eba0c46917b56"
+  "paliWalletConnectPatch": "core.9a6890ed312e22696246d1c971674816158bc289.utils.7e48b0453db3f3c7f2d417ef3823fc5c218f21bf.sha256.ece6c1ece8c745c257bccfda9ce02effaba097b9b5b240405a8913d3bfe1f16a"
 }

@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
   s.swift_version = '5.9'
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
-  s.dependency 'QuickCrypto', '1.1.9'
+  s.dependency 'QuickCrypto', '1.1.10'
   s.frameworks = 'CryptoKit', 'Security'
   s.source_files = 'ios/*.{swift,h,m}', 'shared/mimc_batch.{h,c}', 'shared/slh/*.{h,c}'
   s.public_header_files = 'shared/mimc_batch.h', 'shared/slh/pali_slh_native.h'

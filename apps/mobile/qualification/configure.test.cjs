@@ -7,6 +7,9 @@ const { spawnSync } = require('node:child_process');
 const { readQualificationSdkPin } = require('../scripts/qualification-sdk.cjs');
 
 test('qualification configuration is explicit, isolated, and preserves the production entry bytes', () => {
+  const quickCryptoVersion = '1.1.10';
+  const quickCryptoName = 'react-native-quick-crypto';
+  const quickCryptoIdentity = `quickcrypto.${quickCryptoVersion}`;
   const keyringVersion = '3.9.7'; // Arbitrary exact fixture version, not an SDK release assumption.
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), 'pali-qualification-config-')
@@ -15,13 +18,16 @@ test('qualification configuration is explicit, isolated, and preserves the produ
     fs.mkdirSync(path.join(root, 'scripts'));
     fs.mkdirSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring'), { recursive: true });
     fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
+    const quickCrypto = path.join(root, 'node_modules', quickCryptoName);
+    fs.mkdirSync(quickCrypto, { recursive: true });
+    fs.writeFileSync(path.join(quickCrypto, 'package.json'), JSON.stringify({ name: quickCryptoName, version: quickCryptoVersion }));
     for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs', 'qualificationSdkIdentity.ts'])
       fs.copyFileSync(require.resolve(`../scripts/${script}`), path.join(root, 'scripts', script));
     fs.writeFileSync(
       path.join(root, 'package.json'),
       JSON.stringify({
         main: 'index.ts',
-        dependencies: { '@sidhujag/sysweb3-keyring': keyringVersion },
+        dependencies: { '@sidhujag/sysweb3-keyring': keyringVersion, [quickCryptoName]: quickCryptoVersion },
       })
     );
     fs.writeFileSync(
@@ -56,13 +62,16 @@ test('qualification configuration is explicit, isolated, and preserves the produ
     assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).main, 'index.ts');
     fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
     assert.equal(run().status, 0);
-    assert.equal(JSON.parse(fs.readFileSync(path.join(root, '.native-qualification.json'))).keyringVersion, keyringVersion);
+    const receipt = JSON.parse(fs.readFileSync(path.join(root, '.native-qualification.json')));
+    assert.equal(receipt.keyringVersion, keyringVersion);
+    assert.equal(receipt.quickCryptoIdentity, quickCryptoIdentity);
     const app = JSON.parse(fs.readFileSync(path.join(root, 'app.json'))).expo;
     assert.equal(app.ios.bundleIdentifier, 'com.paliwallet.qualification');
     assert.equal(app.android.package, 'com.paliwallet.qualification');
     assert.equal(app.android.allowBackup, false);
     assert.equal(app.updates.enabled, false);
-    assert.equal(app.extra.paliQualificationSdkIdentity, keyringVersion);
+    assert.equal(app.extra.paliQuickCryptoSentryIdentity, quickCryptoIdentity);
+    assert.equal(app.extra.paliQualificationSdkIdentity, `${keyringVersion}.${quickCryptoIdentity}`);
     assert.equal(
       JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).main,
       'qualification/index.tsx'
