@@ -186,8 +186,8 @@ function privacyPresentation(row: ActivityRow, hideBalances: boolean) {
   const privacy = row.local?.privacyActivity ??
     (row.observation ? row.observation.privacyActivity : row.indexed?.privacyActivity);
   return privacy ? {
-    title: t(`privacy.activity.${privacy.kind}`),
-    poolBadge: hideBalances ? undefined : t('privacy.poolAmount', { amount: privacy.amount }),
+    title: t(`transactions.privacy.${privacy.kind}`),
+    poolBadge: hideBalances ? undefined : t('transactions.privacy.poolAmount', { amount: privacy.amount }),
   } : undefined;
 }
 const rowDate = (row: ActivityRow) => activityDate(activityRowTimestamp(row) || undefined);

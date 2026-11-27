@@ -152,8 +152,8 @@ test('privacy Activity labels the operation and omits its pool denomination when
       nativeTranslationFixture.nativeI18n
     );
     const normal = show(false);
-    assert.equal(normal.title, t('privacy.activity.withdrawal'));
-    assert.equal(normal.poolBadge, t('privacy.poolAmount', { amount: '1' }));
+    assert.equal(normal.title, t('transactions.privacy.withdrawal'));
+    assert.equal(normal.poolBadge, t('transactions.privacy.poolAmount', { amount: '1' }));
     assert.equal(normal.fullAmount, '0 ETH');
     assert(normal.label.includes(normal.poolBadge!));
     const hidden = show(true);

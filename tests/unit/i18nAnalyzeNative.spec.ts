@@ -23,9 +23,17 @@ function analyze(
         'utf8'
       )
     );
+    const projection = 'source/config/loaders/localeProjection.js';
+    write(
+      projection,
+      fs.readFileSync(path.resolve(__dirname, '../..', projection), 'utf8')
+    );
     for (const language of languages)
-      write(`source/assets/locales/${language}.json`, JSON.stringify(resource));
-    write('source/Screen.tsx', "t('general.title');");
+      write(
+        `source/assets/locales/${language}.json`,
+        JSON.stringify({ privacy: { title: 'Privacy' }, ...resource })
+      );
+    write('source/Screen.tsx', "t('general.title'); t('privacy.title');");
     write('apps/mobile/src/screens/Screen.tsx', native);
     write('apps/mobile/App.tsx', '');
     for (const [file, contents] of Object.entries(extra)) write(file, contents);
@@ -53,7 +61,7 @@ it('counts actual native production translation calls alongside extension calls'
     "t('mobile.title');"
   );
   expect(result.status).toBe(0);
-  expect(result.stdout).toContain('Unused keys in en.json: 0 of 2');
+  expect(result.stdout).toContain('Unused keys in en.json: 0 of 3');
 });
 
 it('rejects missing conditional native translations with their actual source location', () => {
@@ -80,7 +88,7 @@ it('native test fixtures and comments cannot keep a dead native resource key ali
     }
   );
   expect(result.status).toBe(1);
-  expect(result.stdout).toContain('Unused keys in en.json: 1 of 3');
+  expect(result.stdout).toContain('Unused keys in en.json: 1 of 4');
   expect(result.stdout).toContain('  mobile.unused');
 });
 
@@ -91,7 +99,7 @@ it('counts translations in the actual native app entry point', () => {
     { 'apps/mobile/App.tsx': "t('mobile.entry');" }
   );
   expect(result.status).toBe(0);
-  expect(result.stdout).toContain('Unused keys in en.json: 0 of 2');
+  expect(result.stdout).toContain('Unused keys in en.json: 0 of 3');
 });
 
 it('counts referenced plural variants without keeping an unrelated plural resource', () => {
@@ -108,8 +116,28 @@ it('counts referenced plural variants without keeping an unrelated plural resour
     "t('mobile.count', { count: 2 });"
   );
   expect(result.status).toBe(1);
-  expect(result.stdout).toContain('Unused keys in en.json: 1 of 5');
+  expect(result.stdout).toContain('Unused keys in en.json: 1 of 6');
   expect(result.stdout).toContain('  mobile.orphan_other');
   expect(result.stdout).not.toContain('  mobile.count_one');
   expect(result.stdout).not.toContain('  mobile.count_other');
+});
+
+it('flags mobile-only and lazy Privacy messages used by ordinary extension screens', () => {
+  const result = analyze(
+    {
+      general: { title: 'Extension' },
+      privacy: { title: 'Privacy', note: 'Note' },
+      mobile: { title: 'Native' },
+    },
+    "t('mobile.title');",
+    {
+      'source/pages/Send/Check.tsx':
+        "t(ready ? 'mobile.title' : 'privacy.note');",
+      'source/pages/Privacy/Check.tsx': "t('privacy.note');",
+    }
+  );
+  expect(result.status).toBe(1);
+  expect(result.stdout).toMatch(/pages\/Send\/Check\.tsx:1:\d+ — mobile.title/);
+  expect(result.stdout).toMatch(/pages\/Send\/Check\.tsx:1:\d+ — privacy.note/);
+  expect(result.stdout).not.toContain('pages/Privacy/Check.tsx:');
 });

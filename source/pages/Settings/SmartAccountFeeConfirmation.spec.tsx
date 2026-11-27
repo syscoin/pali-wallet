@@ -411,7 +411,7 @@ test.each(['cancel', 'scope', 'unmount', 'guard', 'expiry'])(
         await jest.advanceTimersByTimeAsync(90000);
       });
       expect(screen.getByRole('status').textContent).toBe(
-        'settings.smartAccountFeeReviewExpired'
+        'send.feeReviewExpired'
       );
       fireEvent.click(screen.getByText('buttons.close'));
     }

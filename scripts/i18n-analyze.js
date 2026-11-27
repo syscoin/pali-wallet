@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const ts = require('typescript');
+const { projectLocale } = require('../source/config/loaders/localeProjection');
 
 const ROOT = path.resolve(__dirname, '..');
 const LOCALES_DIR = path.join(ROOT, 'source', 'assets', 'locales');
@@ -26,6 +27,9 @@ for (const lng of LANGS) {
 }
 const enFlat = flatten(locales.en);
 const enKeys = new Set(Object.keys(enFlat));
+const extensionBase = flatten(projectLocale(locales.en, 'base'));
+const extensionPrivacy = flatten(projectLocale(locales.en, 'privacy'));
+const missingFromBundle = [];
 
 // --- Collect source files ---
 function walk(dir, files = []) {
@@ -70,6 +74,11 @@ function finiteKeyLiterals(node) {
 }
 
 for (const file of files) {
+  const relative = path.relative(ROOT, file).split(path.sep).join('/');
+  const extensionScreen =
+    /^source\/(pages|components|containers|routers)\//.test(relative) &&
+    !/\.(?:spec|test)\.[jt]sx?$|\/__(?:tests|mocks)__\//.test(relative);
+  const privacyScreen = relative.startsWith('source/pages/Privacy/');
   const src = fs.readFileSync(file, 'utf8');
   const sourceFile = ts.createSourceFile(
     file,
@@ -112,11 +121,18 @@ for (const file of files) {
             literal.getStart(sourceFile)
           );
           const locations = translationCalls.get(literal.text) || [];
-          locations.push(
-            `${path.relative(ROOT, file)}:${position.line + 1}:${
-              position.character + 1
-            }`
-          );
+          const location = `${relative}:${position.line + 1}:${
+            position.character + 1
+          }`;
+          locations.push(location);
+          if (
+            extensionScreen &&
+            enKeys.has(literal.text) &&
+            !(literal.text in extensionBase) &&
+            !(privacyScreen && literal.text in extensionPrivacy)
+          ) {
+            missingFromBundle.push(`${location} — ${literal.text}`);
+          }
           translationCalls.set(literal.text, locations);
         }
       }
@@ -169,6 +185,11 @@ if (missingFromEn.length === 0) {
   }
 }
 
+console.log(
+  '\n=== Translation calls missing from the extension screen bundle ==='
+);
+console.log(missingFromBundle.length ? missingFromBundle.join('\n') : 'none');
+
 // --- Cross-language consistency vs EN ---
 console.log('\n=== Cross-language key consistency (vs en) ===');
 let localeConsistencyErrors = 0;
@@ -206,6 +227,7 @@ for (const k of unused) console.log(`  ${k}`);
 
 if (
   missingFromEn.length > 0 ||
+  missingFromBundle.length > 0 ||
   localeConsistencyErrors > 0 ||
   unused.length > 0
 ) {

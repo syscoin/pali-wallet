@@ -64,8 +64,7 @@ jest.mock('react-redux', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t(key: string, values?: { count: number; total: number }) {
-      if (key === 'mobile.recoveryStatusViews.operation.callsSubmitted')
-        return en.mobile.recoveryStatusViews.operation.callsSubmitted;
+      if (key === 'send.callsSubmitted') return en.send.callsSubmitted;
       if (key === 'send.partialSubmission' && values)
         return en.send.partialSubmission
           .replace('{{count}}', String(values.count))

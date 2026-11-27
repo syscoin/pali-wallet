@@ -2015,9 +2015,7 @@ export const SendTransaction = () => {
                   <dt>{t('send.to')}</dt>
                   <dd>
                     {failedRequest.to === null
-                      ? t(
-                          'mobile.dappConsent.transactionReview.contractDeployment'
-                        )
+                      ? t('transactions.replay.creation')
                       : failedRequest.to || t('receive.addressUnavailable')}
                   </dd>
                   {failedData && failedData !== '0x' && (
@@ -2516,7 +2514,7 @@ export const SendTransaction = () => {
                   {t(
                     isSmartAccountApproval
                       ? 'send.smartAccountFeeQuoteChanged'
-                      : 'privacy.deposit.expired'
+                      : 'send.feeReviewExpired'
                   )}
                 </p>
                 <Button

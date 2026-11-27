@@ -38,7 +38,7 @@ export function RealAppShell({ tab, onTab, immersive = false, children }: {
     <View style={s.content}>{children}</View>
     {!immersive && <SafeAreaView edges={['bottom']} style={s.safe}>
       <View accessibilityRole="tablist" accessibilityLabel={t('mobile.navigation.label')} style={s.tabs}>
-        {TABS.map((item) => <IdlePressable key={item.id} accessibilityRole="tab" accessibilityLabel={`${t(`mobile.navigation.${item.id}`)}${item.id === 'settings' && update.release ? ', update available' : ''}`}
+        {TABS.map((item) => <IdlePressable key={item.id} accessibilityRole="tab" accessibilityLabel={`${t(`mobile.navigation.${item.id}`)}${item.id === 'settings' && update.release ? `, ${t('updates.available')}` : ''}`}
           accessibilityShowsLargeContentViewer accessibilityLargeContentTitle={t(`mobile.navigation.${item.id}`)}
           accessibilityState={{ selected: tab === item.id }} aria-selected={tab === item.id} onPress={() => onTab(item.id)}
           style={({ pressed }) => [s.tab, pressed && s.pressed]}>

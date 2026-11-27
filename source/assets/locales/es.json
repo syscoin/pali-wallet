@@ -384,6 +384,8 @@
     "generationFailed": "No se pudo generar una nueva frase de recuperación. Selecciona Generar para volver a intentarlo."
   },
   "send": {
+    "callsSubmitted": "Llamadas enviadas",
+    "feeReviewExpired": "La revisión ha caducado. Revisa de nuevo la comisión actual.",
     "openWalletTab": "Abrir en la pestaña de la cartera",
     "transactionFailureDetails": "La transacción falló: {{message}}",
     "transactionCreationFailureDetails": "No se pudo crear la transacción ({{code}}): {{message}}",
@@ -1048,7 +1050,6 @@
     "smartAccountFeeReviewTitle": "Revisar comisión de red",
     "smartAccountFeeReviewSelectedAccount": "Cuenta seleccionada",
     "smartAccountFeeReviewGasTank": "Comisión de red máxima · depósito de gas",
-    "smartAccountFeeReviewExpired": "La revisión ha caducado. Revisa de nuevo la comisión actual.",
     "smartAccountFeeReviewMaximumTotal": "Coste total máximo"
   },
   "start": {
@@ -1125,6 +1126,11 @@
     "coinGeckoListingUnavailable": "Listado no disponible"
   },
   "transactions": {
+    "privacy": {
+      "deposit": "Depósito privado",
+      "withdrawal": "Retiro privado",
+      "poolAmount": "Pool de {{amount}} ETH"
+    },
     "smartAuthorizations": {
       "signedOperation": "Operación firmada",
       "noTransactionRecorded": "No hay ninguna transacción registrada",
@@ -1770,11 +1776,6 @@
   },
   "privacy": {
     "title": "Privacidad",
-    "poolAmount": "Pool de {{amount}} ETH",
-    "activity": {
-      "deposit": "Depósito privado",
-      "withdrawal": "Retiro privado"
-    },
     "bundle": {
       "snapshotTime": "Fecha de la instantánea: {{time}}",
       "empty": "Esta copia no contiene notas.",
@@ -3906,7 +3907,6 @@
         "approvalMethodChanged": "Método de aprobación cambiado",
         "guardianRecoveryRemoved": "Recuperación por guardianes eliminada",
         "guardianPolicyUpdated": "Política de guardianes actualizada",
-        "callsSubmitted": "Llamadas enviadas",
         "transferSubmitted": "Transferencia enviada",
         "smartAccountDeployed": "Cuenta inteligente desplegada",
         "theNetworkConfirmedTheAuthenticatorChange": "La red confirmó el cambio de autenticación.",
