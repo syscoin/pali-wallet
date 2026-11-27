@@ -172,7 +172,7 @@ The [mobile lockfile](package-lock.json) pins the dependencies below with integr
 | `@sidhujag/sysweb3-network`  | 2.0.0   |
 | `syscoinjs-lib`              | 2.0.0   |
 | `syscointx-js`               | 2.0.0   |
-| `react-native-quick-crypto`  | 1.1.9   |
+| `react-native-quick-crypto`  | 1.1.10  |
 | `react-native-nitro-modules` | 0.37.2  |
 
 Both hosts pin official Keyring 2.1.13, which includes the operation-scoped secret lifetime from [Sysweb3 #108](https://github.com/sidhujag/sysweb3/pull/108). Mobile explicitly selects that policy; the extension retains its existing unlocked-session policy. Qualification accepts only an exact package version and records the installed version and lockfile hash. The [shared-core audit](docs/shared-core-audit.md) tracks current qualification; the [historical candidate record](https://github.com/syscoin/pali-wallet/blob/3d7c784d/vendor/sysweb3-operation/REVIEWED-CANDIDATE.json) preserves the earlier review provenance.

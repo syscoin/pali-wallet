@@ -21,8 +21,6 @@ on:
       - 'scripts/apply-walletconnect-terminal.cjs'
       - 'scripts/walletconnect-request-isolation.patch'
       - 'scripts/walletconnect-terminal.json'
-      - 'scripts/apply-quickcrypto-sentry.cjs'
-      - 'scripts/quickcrypto-sentry.json'
       - 'apps/mobile/src/**'
       - 'apps/mobile/modules/**'
       - 'apps/mobile/qualification/**'
