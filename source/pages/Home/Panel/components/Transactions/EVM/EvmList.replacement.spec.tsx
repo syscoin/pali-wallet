@@ -42,9 +42,9 @@ const mockFiat = () => '0 USD';
 const mockT = (key: string, values?: { amount?: string }) =>
   ((
     {
-      'privacy.activity.deposit': 'Privacy deposit',
-      'privacy.activity.withdrawal': 'Privacy withdrawal',
-      'privacy.poolAmount': `${values?.amount} ETH pool`,
+      'transactions.privacy.deposit': 'Privacy deposit',
+      'transactions.privacy.withdrawal': 'Privacy withdrawal',
+      'transactions.privacy.poolAmount': `${values?.amount} ETH pool`,
       'send.confirmed': 'Confirmed',
       'send.pending': 'Pending',
       'transactions.unconfirmed': 'Unconfirmed',

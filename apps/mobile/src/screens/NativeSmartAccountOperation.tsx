@@ -874,7 +874,7 @@ export function NativeSmartAccountOperationContent({
                   ? t('mobile.recoveryStatusViews.operation.guardianRecoveryRemoved')
                   : t('mobile.recoveryStatusViews.operation.guardianPolicyUpdated')
                 : batch
-                ? t('mobile.recoveryStatusViews.operation.callsSubmitted')
+                ? t('send.callsSubmitted')
                 : transfer?.kind === 'dapp-call'
                 ? t('privacy.deposit.submitted')
                 : transfer

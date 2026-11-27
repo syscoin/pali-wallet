@@ -384,6 +384,8 @@
     "generationFailed": "新しいリカバリーフレーズを生成できませんでした。「生成」を選択してもう一度お試しください。"
   },
   "send": {
+    "callsSubmitted": "呼び出しを送信しました",
+    "feeReviewExpired": "確認の有効期限が切れました。最新の手数料を再確認してください。",
     "openWalletTab": "ウォレットのタブで開く",
     "transactionFailureDetails": "トランザクション失敗：{{message}}",
     "transactionCreationFailureDetails": "トランザクション作成失敗（{{code}}）：{{message}}",
@@ -1048,7 +1050,6 @@
     "smartAccountFeeReviewTitle": "ネットワーク手数料を確認",
     "smartAccountFeeReviewSelectedAccount": "選択したアカウント",
     "smartAccountFeeReviewGasTank": "最大ネットワーク手数料 · ガスタンク",
-    "smartAccountFeeReviewExpired": "確認の有効期限が切れました。最新の手数料を再確認してください。",
     "smartAccountFeeReviewMaximumTotal": "最大合計費用"
   },
   "start": {
@@ -1125,6 +1126,11 @@
     "coinGeckoListingUnavailable": "掲載情報を取得できません"
   },
   "transactions": {
+    "privacy": {
+      "deposit": "プライバシー入金",
+      "withdrawal": "プライバシー出金",
+      "poolAmount": "{{amount}} ETHプール"
+    },
     "smartAuthorizations": {
       "signedOperation": "署名済みの操作",
       "noTransactionRecorded": "トランザクションの記録なし",
@@ -1770,11 +1776,6 @@
   },
   "privacy": {
     "title": "プライバシー",
-    "poolAmount": "{{amount}} ETHプール",
-    "activity": {
-      "deposit": "プライバシー入金",
-      "withdrawal": "プライバシー出金"
-    },
     "bundle": {
       "snapshotTime": "スナップショットの日時：{{time}}",
       "empty": "このバックアップにはノートがありません。",
@@ -3906,7 +3907,6 @@
         "approvalMethodChanged": "承認方法を変更しました",
         "guardianRecoveryRemoved": "ガーディアン復旧を削除しました",
         "guardianPolicyUpdated": "ガーディアンポリシーを更新しました",
-        "callsSubmitted": "呼び出しを送信しました",
         "transferSubmitted": "送金を送信しました",
         "smartAccountDeployed": "スマートアカウントをデプロイしました",
         "theNetworkConfirmedTheAuthenticatorChange": "ネットワークが認証器の変更を確認しました。",

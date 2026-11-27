@@ -1215,8 +1215,8 @@ export const EvmTransactionDetailsEnhanced = ({
     : privacy
     ? t(
         privacy.kind === 'deposit'
-          ? 'privacy.activity.deposit'
-          : 'privacy.activity.withdrawal'
+          ? 'transactions.privacy.deposit'
+          : 'transactions.privacy.withdrawal'
       )
     : directionLabel;
   return (
@@ -1247,7 +1247,9 @@ export const EvmTransactionDetailsEnhanced = ({
             </p>
             {privacy && (
               <span className="inline-flex rounded-full border border-brand-blue/20 bg-brand-blue/10 px-2 py-0.5 text-xs text-brand-blue">
-                {t('privacy.poolAmount', { amount: privacy.amount })}
+                {t('transactions.privacy.poolAmount', {
+                  amount: privacy.amount,
+                })}
               </span>
             )}
           </>

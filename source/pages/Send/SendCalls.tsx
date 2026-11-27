@@ -744,9 +744,7 @@ export const SendCalls = () => {
       Boolean(feeQuoteError)
     )
       return;
-    const submittedMessage = t(
-      'mobile.recoveryStatusViews.operation.callsSubmitted'
-    );
+    const submittedMessage = t('send.callsSubmitted');
     submissionInFlightRef.current = true;
     const generation = eoaLifetimeRef.current;
     try {
@@ -1121,7 +1119,7 @@ export const SendCalls = () => {
                 [quote.id]
               ).catch(() => undefined);
               reject(
-                Object.assign(new Error(t('privacy.deposit.expired')), {
+                Object.assign(new Error(t('send.feeReviewExpired')), {
                   transactionNotBroadcast: true,
                 })
               );
@@ -1286,7 +1284,7 @@ export const SendCalls = () => {
     setEoaFeeReview(undefined);
     if (Date.now() >= pending.expires) {
       pending.reject(
-        Object.assign(new Error(t('privacy.deposit.expired')), {
+        Object.assign(new Error(t('send.feeReviewExpired')), {
           transactionNotBroadcast: true,
         })
       );

@@ -384,6 +384,8 @@
     "generationFailed": "无法生成新的恢复短语。请选择“生成”重试。"
   },
   "send": {
+    "callsSubmitted": "调用已提交",
+    "feeReviewExpired": "审核已过期。请重新审核当前手续费。",
     "openWalletTab": "在钱包标签页中打开",
     "transactionFailureDetails": "交易失败：{{message}}",
     "transactionCreationFailureDetails": "交易创建失败（{{code}}）：{{message}}",
@@ -1048,7 +1050,6 @@
     "smartAccountFeeReviewTitle": "查看网络费用",
     "smartAccountFeeReviewSelectedAccount": "所选账户",
     "smartAccountFeeReviewGasTank": "最大网络费用 · Gas tank",
-    "smartAccountFeeReviewExpired": "审核已过期。请重新审核当前手续费。",
     "smartAccountFeeReviewMaximumTotal": "最高总费用"
   },
   "start": {
@@ -1125,6 +1126,11 @@
     "coinGeckoListingUnavailable": "暂无法获取收录信息"
   },
   "transactions": {
+    "privacy": {
+      "deposit": "隐私存款",
+      "withdrawal": "隐私提款",
+      "poolAmount": "{{amount}} ETH 池"
+    },
     "smartAuthorizations": {
       "signedOperation": "已签名的操作",
       "noTransactionRecorded": "没有交易记录",
@@ -1770,11 +1776,6 @@
   },
   "privacy": {
     "title": "隐私",
-    "poolAmount": "{{amount}} ETH 池",
-    "activity": {
-      "deposit": "隐私存款",
-      "withdrawal": "隐私提款"
-    },
     "bundle": {
       "snapshotTime": "快照时间：{{time}}",
       "empty": "此备份不包含票据。",
@@ -3906,7 +3907,6 @@
         "approvalMethodChanged": "批准方式已更改",
         "guardianRecoveryRemoved": "守护人恢复已移除",
         "guardianPolicyUpdated": "守护人策略已更新",
-        "callsSubmitted": "调用已提交",
         "transferSubmitted": "转账已提交",
         "smartAccountDeployed": "智能账户已部署",
         "theNetworkConfirmedTheAuthenticatorChange": "网络已确认认证器更改。",

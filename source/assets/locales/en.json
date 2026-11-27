@@ -384,6 +384,8 @@
     "generationFailed": "Could not generate a new recovery phrase. Select Generate to try again."
   },
   "send": {
+    "callsSubmitted": "Calls submitted",
+    "feeReviewExpired": "Review expired. Review the current fee again.",
     "openWalletTab": "Open in wallet tab",
     "transactionFailureDetails": "Transaction failed: {{message}}",
     "transactionCreationFailureDetails": "Transaction creation failed ({{code}}): {{message}}",
@@ -1048,7 +1050,6 @@
     "smartAccountFeeReviewTitle": "Review network fee",
     "smartAccountFeeReviewSelectedAccount": "Selected account",
     "smartAccountFeeReviewGasTank": "Maximum network fee · gas tank",
-    "smartAccountFeeReviewExpired": "Review expired. Review the current fee again.",
     "smartAccountFeeReviewMaximumTotal": "Maximum total cost"
   },
   "start": {
@@ -1125,6 +1126,11 @@
     "coinGeckoListingUnavailable": "Listing unavailable"
   },
   "transactions": {
+    "privacy": {
+      "deposit": "Privacy deposit",
+      "withdrawal": "Privacy withdrawal",
+      "poolAmount": "{{amount}} ETH pool"
+    },
     "smartAuthorizations": {
       "signedOperation": "Signed operation",
       "noTransactionRecorded": "No transaction recorded",
@@ -1770,11 +1776,6 @@
   },
   "privacy": {
     "title": "Privacy",
-    "poolAmount": "{{amount}} ETH pool",
-    "activity": {
-      "deposit": "Privacy deposit",
-      "withdrawal": "Privacy withdrawal"
-    },
     "bundle": {
       "snapshotTime": "Snapshot time: {{time}}",
       "empty": "This backup contains no notes.",
@@ -3906,7 +3907,6 @@
         "approvalMethodChanged": "Approval method changed",
         "guardianRecoveryRemoved": "Guardian recovery removed",
         "guardianPolicyUpdated": "Guardian policy updated",
-        "callsSubmitted": "Calls submitted",
         "transferSubmitted": "Transfer submitted",
         "smartAccountDeployed": "Smart account deployed",
         "theNetworkConfirmedTheAuthenticatorChange": "The network confirmed the authenticator change.",

@@ -384,6 +384,8 @@
     "generationFailed": "Não foi possível gerar uma nova frase de recuperação. Selecione Gerar para tentar novamente."
   },
   "send": {
+    "callsSubmitted": "Chamadas enviadas",
+    "feeReviewExpired": "A revisão expirou. Reveja a taxa atual.",
     "openWalletTab": "Abrir na aba da carteira",
     "transactionFailureDetails": "Falha na transação: {{message}}",
     "transactionCreationFailureDetails": "Falha ao criar a transação ({{code}}): {{message}}",
@@ -1048,7 +1050,6 @@
     "smartAccountFeeReviewTitle": "Rever taxa de rede",
     "smartAccountFeeReviewSelectedAccount": "Conta selecionada",
     "smartAccountFeeReviewGasTank": "Taxa máxima de rede · reserva de gás",
-    "smartAccountFeeReviewExpired": "A revisão expirou. Reveja a taxa atual.",
     "smartAccountFeeReviewMaximumTotal": "Custo total máximo"
   },
   "start": {
@@ -1125,6 +1126,11 @@
     "coinGeckoListingUnavailable": "Listagem indisponível"
   },
   "transactions": {
+    "privacy": {
+      "deposit": "Depósito privado",
+      "withdrawal": "Saque privado",
+      "poolAmount": "Pool de {{amount}} ETH"
+    },
     "smartAuthorizations": {
       "signedOperation": "Operação assinada",
       "noTransactionRecorded": "Nenhuma transação registrada",
@@ -1770,11 +1776,6 @@
   },
   "privacy": {
     "title": "Privacidade",
-    "poolAmount": "Pool de {{amount}} ETH",
-    "activity": {
-      "deposit": "Depósito privado",
-      "withdrawal": "Saque privado"
-    },
     "bundle": {
       "snapshotTime": "Data do instantâneo: {{time}}",
       "empty": "Este backup não contém notas.",
@@ -3906,7 +3907,6 @@
         "approvalMethodChanged": "Método de aprovação alterado",
         "guardianRecoveryRemoved": "Recuperação por guardiões removida",
         "guardianPolicyUpdated": "Política de guardiões atualizada",
-        "callsSubmitted": "Chamadas enviadas",
         "transferSubmitted": "Transferência enviada",
         "smartAccountDeployed": "Conta inteligente implantada",
         "theNetworkConfirmedTheAuthenticatorChange": "A rede confirmou a alteração de autenticação.",

@@ -284,7 +284,7 @@ export function useSmartAccountFeeConfirmation(scope: string) {
       )}
       {expired && (
         <p role="status" className="mt-3 text-sm text-brand-yellowInfo">
-          {t('settings.smartAccountFeeReviewExpired')}
+          {t('send.feeReviewExpired')}
         </p>
       )}
     </ConfirmationModal>

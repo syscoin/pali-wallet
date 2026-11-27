@@ -217,7 +217,9 @@ const EvmTransactionItem = React.memo(
         : undefined;
     const poolBadge = privacyActivity && (
       <span className="max-w-full rounded-full border border-brand-blue/20 bg-brand-blue/10 px-1.5 py-0.5 text-[10px] leading-tight text-brand-blue">
-        {t('privacy.poolAmount', { amount: privacyActivity.amount })}
+        {t('transactions.privacy.poolAmount', {
+          amount: privacyActivity.amount,
+        })}
       </span>
     );
     const transactionLabel = smartBatch
@@ -227,8 +229,8 @@ const EvmTransactionItem = React.memo(
       : privacyActivity
       ? t(
           privacyActivity.kind === 'deposit'
-            ? 'privacy.activity.deposit'
-            : 'privacy.activity.withdrawal'
+            ? 'transactions.privacy.deposit'
+            : 'transactions.privacy.withdrawal'
         )
       : getTransactionTypeDisplayLabel(
           'historySource' in tx &&
